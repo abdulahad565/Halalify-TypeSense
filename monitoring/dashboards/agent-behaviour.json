@@ -1,5 +1,4 @@
 {
-<<<<<<< HEAD
   "__inputs": [
     {
       "name": "DS_LOKI",
@@ -10,20 +9,12 @@
       "pluginName": "Loki"
     }
   ],
-=======
->>>>>>> fa6f511 (monitoring dasboards: stable version of refactor-agent)
   "__requires": [
     { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "10.0.0" },
     { "type": "datasource", "id": "loki", "name": "Loki", "version": "1.0.0" },
     { "type": "panel", "id": "timeseries", "name": "Time series", "version": "" },
     { "type": "panel", "id": "stat", "name": "Stat", "version": "" },
-<<<<<<< HEAD
     { "type": "panel", "id": "bargauge", "name": "Bar gauge", "version": "" },
-=======
-    { "type": "panel", "id": "piechart", "name": "Pie chart", "version": "" },
-    { "type": "panel", "id": "table", "name": "Table", "version": "" },
-    { "type": "panel", "id": "logs", "name": "Logs", "version": "" },
->>>>>>> fa6f511 (monitoring dasboards: stable version of refactor-agent)
     { "type": "panel", "id": "text", "name": "Text", "version": "" }
   ],
   "annotations": { "list": [] },
@@ -39,11 +30,7 @@
   "timezone": "browser",
   "title": "HalalOne - Agent Behaviour",
   "uid": "halalone-agent-behaviour",
-<<<<<<< HEAD
   "version": 2,
-=======
-  "version": 3,
->>>>>>> fa6f511 (monitoring dasboards: stable version of refactor-agent)
   "panels": [
     {
       "id": 100,
@@ -53,11 +40,7 @@
       "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
       "options": {
         "mode": "markdown",
-<<<<<<< HEAD
         "content": "## Agent Behaviour\nWhen a user asks a question, the AI agent picks a search tool to answer it. This dashboard shows **which tool it picks and whether that tool finds anything**.\n\n`KeywordFilterSearch` exact matching on the product database &nbsp;·&nbsp; `SemanticFilterSearch` meaning-based search for vague questions &nbsp;·&nbsp; `WebSearch` last resort when the database has nothing.\n\n**Heavy WebSearch use is a signal** - it means the product catalogue is not answering the questions people ask. All four boxes below should stay at zero."
-=======
-        "content": "### Agent Behaviour &nbsp;·&nbsp; which search tool the AI picks, and whether it finds anything\n`KeywordFilterSearch` exact matching on the product database &nbsp;·&nbsp; `SemanticFilterSearch` meaning-based search for vague questions &nbsp;·&nbsp; `WebSearch` last resort when the database has nothing.\n\n**Two things to watch:** heavy `WebSearch` use means the product catalogue is not answering people's questions, and a tool returning near-zero rows is running but finding nothing - a search-quality problem, not a crash."
->>>>>>> fa6f511 (monitoring dasboards: stable version of refactor-agent)
       }
     },
 
@@ -65,31 +48,18 @@
       "id": 1,
       "type": "stat",
       "title": "Searches run",
-<<<<<<< HEAD
       "description": "How many times the agent used a search tool.",
       "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
       "gridPos": { "h": 5, "w": 6, "x": 0, "y": 4 },
       "options": {
         "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
         "colorMode": "value", "graphMode": "area", "textMode": "auto", "orientation": "auto", "justifyMode": "auto"
-=======
-      "description": "How many times the agent called a search tool, and when.",
-      "datasource": { "type": "loki", "uid": "loki-halalone" },
-      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 4 },
-      "options": {
-        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
-        "colorMode": "value", "graphMode": "area", "textMode": "value_and_name", "orientation": "auto", "justifyMode": "auto"
->>>>>>> fa6f511 (monitoring dasboards: stable version of refactor-agent)
       },
       "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "blue" }, "noValue": "0" }, "overrides": [] },
       "targets": [
         {
           "refId": "A",
-<<<<<<< HEAD
           "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
-=======
-          "datasource": { "type": "loki", "uid": "loki-halalone" },
->>>>>>> fa6f511 (monitoring dasboards: stable version of refactor-agent)
           "queryType": "range",
           "legendFormat": "searches",
           "expr": "sum(count_over_time({job=\"halalify-backend\"} | json event=\"event\" | event=`tool.invoked` [$__interval]))"
@@ -99,7 +69,6 @@
     {
       "id": 2,
       "type": "stat",
-<<<<<<< HEAD
       "title": "Agent crashes",
       "description": "A step in the agent raised an error and hit the recovery path. Should be 0.",
       "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
@@ -135,15 +104,6 @@
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "colorMode": "background_solid", "graphMode": "none", "textMode": "auto", "orientation": "auto", "justifyMode": "auto"
-=======
-      "title": "Searches finding nothing",
-      "description": "Tool calls that returned zero products. High numbers point at catalogue gaps or queries the search cannot handle.",
-      "datasource": { "type": "loki", "uid": "loki-halalone" },
-      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 4 },
-      "options": {
-        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
-        "colorMode": "value", "graphMode": "area", "textMode": "value_and_name", "orientation": "auto", "justifyMode": "auto"
->>>>>>> fa6f511 (monitoring dasboards: stable version of refactor-agent)
       },
       "fieldConfig": {
         "defaults": {
@@ -156,45 +116,9 @@
       "targets": [
         {
           "refId": "A",
-<<<<<<< HEAD
           "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
           "queryType": "instant",
           "expr": "sum(count_over_time({job=\"halalify-backend\"} | json event=\"event\" | event=`search_node.declined_tool` [$__range])) or vector(0)"
-=======
-          "datasource": { "type": "loki", "uid": "loki-halalone" },
-          "queryType": "range",
-          "legendFormat": "empty results",
-          "expr": "sum(count_over_time({job=\"halalify-backend\"} | json event=\"event\", results=\"results\" | event=`tool.invoked` | results = 0 [$__interval]))"
-        }
-      ]
-    },
-    {
-      "id": 3,
-      "type": "stat",
-      "title": "Agent crashes",
-      "description": "A step inside the agent raised an error and hit the recovery path. Should be 0.",
-      "datasource": { "type": "loki", "uid": "loki-halalone" },
-      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 4 },
-      "options": {
-        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
-        "colorMode": "value", "graphMode": "area", "textMode": "value_and_name", "orientation": "auto", "justifyMode": "auto"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short", "decimals": 0, "noValue": "0",
-          "color": { "mode": "thresholds" },
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
-        },
-        "overrides": []
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": { "type": "loki", "uid": "loki-halalone" },
-          "queryType": "range",
-          "legendFormat": "crashes",
-          "expr": "sum(count_over_time({job=\"halalify-backend\"} | json event=\"event\" | event=`agent.node.failed` [$__interval]))"
->>>>>>> fa6f511 (monitoring dasboards: stable version of refactor-agent)
         }
       ]
     },
@@ -202,21 +126,12 @@
       "id": 4,
       "type": "stat",
       "title": "Photo reading failures",
-<<<<<<< HEAD
       "description": "The vision model failed to read an uploaded product label. Should be 0.",
       "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
       "gridPos": { "h": 5, "w": 6, "x": 18, "y": 4 },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "colorMode": "background_solid", "graphMode": "none", "textMode": "auto", "orientation": "auto", "justifyMode": "auto"
-=======
-      "description": "The vision model failed to read an uploaded product label - either the call failed, the response was unparseable, or it did not match the expected shape.",
-      "datasource": { "type": "loki", "uid": "loki-halalone" },
-      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 4 },
-      "options": {
-        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
-        "colorMode": "value", "graphMode": "area", "textMode": "value_and_name", "orientation": "auto", "justifyMode": "auto"
->>>>>>> fa6f511 (monitoring dasboards: stable version of refactor-agent)
       },
       "fieldConfig": {
         "defaults": {
@@ -229,23 +144,15 @@
       "targets": [
         {
           "refId": "A",
-<<<<<<< HEAD
           "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
           "queryType": "instant",
           "expr": "sum(count_over_time({job=\"halalify-backend\"} | json event=\"event\" | event=~`vision_llm\\..*` [$__range])) or vector(0)"
-=======
-          "datasource": { "type": "loki", "uid": "loki-halalone" },
-          "queryType": "range",
-          "legendFormat": "vlm failures",
-          "expr": "sum(count_over_time({job=\"halalify-backend\"} | json event=\"event\" | event=~`vision_llm\\..*` [$__interval]))"
->>>>>>> fa6f511 (monitoring dasboards: stable version of refactor-agent)
         }
       ]
     },
 
     {
       "id": 5,
-<<<<<<< HEAD
       "type": "bargauge",
       "title": "Which search tool the agent chose",
       "description": "Longer bar = used more often. A large WebSearch bar means the product database is not answering people's questions.",
@@ -264,43 +171,11 @@
           "queryType": "instant",
           "legendFormat": "{{tool}}",
           "expr": "sum by (tool) (count_over_time({job=\"halalify-backend\"} | json event=\"event\", tool=\"tool\" | event=`tool.invoked` [$__range]))"
-=======
-      "type": "timeseries",
-      "title": "Search activity by tool, over time",
-      "description": "Which tool the agent reached for, and when. Bands stack, so total height is all searching. A growing WebSearch band means more questions are falling through to the open web.",
-      "datasource": { "type": "loki", "uid": "loki-halalone" },
-      "gridPos": { "h": 9, "w": 16, "x": 0, "y": 9 },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short", "min": 0, "decimals": 0,
-          "custom": {
-            "drawStyle": "line", "lineWidth": 1, "fillOpacity": 45, "showPoints": "never",
-            "spanNulls": false, "lineInterpolation": "smooth",
-            "stacking": { "mode": "normal", "group": "A" }, "gradientMode": "opacity"
-          }
-        },
-        "overrides": [
-          { "matcher": { "id": "byName", "options": "WebSearch" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }] }
-        ]
-      },
-      "options": {
-        "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["sum", "max"], "sortBy": "Total", "sortDesc": true },
-        "tooltip": { "mode": "multi", "sort": "desc" }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": { "type": "loki", "uid": "loki-halalone" },
-          "queryType": "range",
-          "legendFormat": "{{tool}}",
-          "expr": "sum by (tool) (count_over_time({job=\"halalify-backend\"} | json event=\"event\", tool=\"tool\" | event=`tool.invoked` [$__interval]))"
->>>>>>> fa6f511 (monitoring dasboards: stable version of refactor-agent)
         }
       ]
     },
     {
       "id": 6,
-<<<<<<< HEAD
       "type": "bargauge",
       "title": "Average products found per search",
       "description": "How many rows each tool returns on average. A tool near zero is running but finding nothing - that is a search-quality problem, not a crash.",
@@ -326,28 +201,6 @@
           "queryType": "instant",
           "legendFormat": "{{tool}}",
           "expr": "avg_over_time({job=\"halalify-backend\"} | json event=\"event\", tool=\"tool\", results=\"results\" | event=`tool.invoked` | unwrap results [$__range]) by (tool)"
-=======
-      "type": "piechart",
-      "title": "Tool mix",
-      "description": "Share of searches handled by each tool. Ideally the two database tools dominate and WebSearch is a small slice.",
-      "datasource": { "type": "loki", "uid": "loki-halalone" },
-      "gridPos": { "h": 9, "w": 8, "x": 16, "y": 9 },
-      "options": {
-        "pieType": "donut",
-        "displayLabels": ["percent"],
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true, "values": ["value", "percent"] },
-        "tooltip": { "mode": "single", "sort": "none" }
-      },
-      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "color": { "mode": "palette-classic" }, "noValue": "No searches yet" }, "overrides": [] },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": { "type": "loki", "uid": "loki-halalone" },
-          "queryType": "instant",
-          "legendFormat": "{{tool}}",
-          "expr": "sum by (tool) (count_over_time({job=\"halalify-backend\"} | json event=\"event\", tool=\"tool\" | event=`tool.invoked` [$__range]))"
->>>>>>> fa6f511 (monitoring dasboards: stable version of refactor-agent)
         }
       ]
     },
@@ -355,7 +208,6 @@
     {
       "id": 7,
       "type": "timeseries",
-<<<<<<< HEAD
       "title": "Search activity over time",
       "description": "When the agent was searching. One line - height means busier.",
       "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
@@ -376,36 +228,11 @@
           "queryType": "range",
           "legendFormat": "searches",
           "expr": "sum(count_over_time({job=\"halalify-backend\"} | json event=\"event\" | event=`tool.invoked` [$__interval]))"
-=======
-      "title": "Products found per search",
-      "description": "Average number of rows each tool returns, tracked over time. A line drifting toward zero means that tool has stopped finding useful matches - watch this after any catalogue or prompt change.",
-      "datasource": { "type": "loki", "uid": "loki-halalone" },
-      "gridPos": { "h": 9, "w": 16, "x": 0, "y": 18 },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short", "min": 0, "decimals": 1,
-          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 8, "showPoints": "auto", "pointSize": 7, "spanNulls": true, "lineInterpolation": "smooth" }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["mean", "min"], "sortBy": "Mean", "sortDesc": true },
-        "tooltip": { "mode": "multi", "sort": "desc" }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": { "type": "loki", "uid": "loki-halalone" },
-          "queryType": "range",
-          "legendFormat": "{{tool}}",
-          "expr": "avg_over_time({job=\"halalify-backend\"} | json event=\"event\", tool=\"tool\", results=\"results\" | event=`tool.invoked` | unwrap results [$__interval]) by (tool)"
->>>>>>> fa6f511 (monitoring dasboards: stable version of refactor-agent)
         }
       ]
     },
     {
       "id": 8,
-<<<<<<< HEAD
       "type": "bargauge",
       "title": "Searches that found nothing",
       "description": "Tool calls that returned zero products. High numbers here point at gaps in the catalogue or at queries the search cannot handle.",
@@ -421,39 +248,6 @@
         {
           "refId": "A",
           "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
-=======
-      "type": "table",
-      "title": "Empty searches by tool",
-      "description": "How often each tool came back with nothing, with a bar for comparison.",
-      "datasource": { "type": "loki", "uid": "loki-halalone" },
-      "gridPos": { "h": 9, "w": 8, "x": 16, "y": 18 },
-      "options": { "showHeader": true, "cellHeight": "sm", "footer": { "show": false, "reducer": ["sum"], "fields": "" } },
-      "fieldConfig": {
-        "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "filterable": false } },
-        "overrides": [
-          {
-            "matcher": { "id": "byName", "options": "Value" },
-            "properties": [
-              { "id": "displayName", "value": "Empty results" },
-              { "id": "unit", "value": "short" },
-              { "id": "decimals", "value": 0 },
-              { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "gradient", "valueDisplayMode": "text" } },
-              { "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } },
-              { "id": "min", "value": 0 }
-            ]
-          },
-          { "matcher": { "id": "byName", "options": "tool" }, "properties": [{ "id": "displayName", "value": "Tool" }] }
-        ]
-      },
-      "transformations": [
-        { "id": "organize", "options": { "excludeByName": { "Time": true }, "indexByName": {}, "renameByName": {} } },
-        { "id": "sortBy", "options": { "fields": {}, "sort": [{ "field": "Value", "desc": true }] } }
-      ],
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": { "type": "loki", "uid": "loki-halalone" },
->>>>>>> fa6f511 (monitoring dasboards: stable version of refactor-agent)
           "queryType": "instant",
           "legendFormat": "{{tool}}",
           "expr": "sum by (tool) (count_over_time({job=\"halalify-backend\"} | json event=\"event\", tool=\"tool\", results=\"results\" | event=`tool.invoked` | results = 0 [$__range]))"
@@ -463,7 +257,6 @@
 
     {
       "id": 9,
-<<<<<<< HEAD
       "type": "bargauge",
       "title": "Agent problems by type",
       "description": "Everything that went wrong inside the agent - node crashes, judge failures, tool failures and web-search retries. Empty is the good case.",
@@ -482,37 +275,11 @@
           "queryType": "instant",
           "legendFormat": "{{event}}",
           "expr": "sum by (event) (count_over_time({job=\"halalify-backend\"} | json event=\"event\" | event=~`agent\\.node\\.failed|judge\\..*|tool\\.(semantic_search|web_search)\\.failed|web_search\\.exa_stream\\..*|vision_llm\\..*` [$__range]))"
-=======
-      "type": "timeseries",
-      "title": "Agent problems over time",
-      "description": "Everything that went wrong inside the agent, stacked by kind: node crashes, judge failures (including caught hallucinated product IDs), tool failures, web-search retries and vision failures. Empty is the good case.",
-      "datasource": { "type": "loki", "uid": "loki-halalone" },
-      "gridPos": { "h": 9, "w": 16, "x": 0, "y": 27 },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short", "min": 0, "decimals": 0,
-          "custom": { "drawStyle": "bars", "lineWidth": 1, "fillOpacity": 85, "showPoints": "never", "barWidthFactor": 0.8, "barAlignment": 0, "stacking": { "mode": "normal", "group": "A" } }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "calcs": ["sum"], "sortBy": "Total", "sortDesc": true },
-        "tooltip": { "mode": "multi", "sort": "desc" }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": { "type": "loki", "uid": "loki-halalone" },
-          "queryType": "range",
-          "legendFormat": "{{event}}",
-          "expr": "sum by (event) (count_over_time({job=\"halalify-backend\"} | json event=\"event\" | event=~`agent\\.node\\.failed|judge\\..*|tool\\.(semantic_search|web_search)\\.failed|web_search\\.exa_stream\\..*|vision_llm\\..*|search_node\\.declined_tool` [$__interval]))"
->>>>>>> fa6f511 (monitoring dasboards: stable version of refactor-agent)
         }
       ]
     },
     {
       "id": 10,
-<<<<<<< HEAD
       "type": "bargauge",
       "title": "Photo uploads by route",
       "description": "How product photos reach the vision model - the HTTP endpoint or a WebSocket image message.",
@@ -528,55 +295,11 @@
         {
           "refId": "A",
           "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
-=======
-      "type": "piechart",
-      "title": "Photo uploads by route",
-      "description": "How product photos reach the vision model - the HTTP endpoint or a WebSocket image message.",
-      "datasource": { "type": "loki", "uid": "loki-halalone" },
-      "gridPos": { "h": 9, "w": 8, "x": 16, "y": 27 },
-      "options": {
-        "pieType": "donut",
-        "displayLabels": ["percent"],
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true, "values": ["value", "percent"] },
-        "tooltip": { "mode": "single", "sort": "none" }
-      },
-      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "color": { "mode": "palette-classic" }, "noValue": "No photos uploaded yet" }, "overrides": [] },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": { "type": "loki", "uid": "loki-halalone" },
->>>>>>> fa6f511 (monitoring dasboards: stable version of refactor-agent)
           "queryType": "instant",
           "legendFormat": "{{action}}",
           "expr": "sum by (action) (count_over_time({job=\"halalify-backend\"} | json event=\"event\", action=\"action\" | event=`process.end` | action=~`http\\.extract_image|ws\\.image` [$__range]))"
         }
       ]
-<<<<<<< HEAD
-=======
-    },
-
-    {
-      "id": 11,
-      "type": "logs",
-      "title": "Recent agent problems - the actual log lines",
-      "description": "The raw records behind the charts above, newest first. Click a line to expand it and see the session, the node that failed and the full error.",
-      "datasource": { "type": "loki", "uid": "loki-halalone" },
-      "gridPos": { "h": 11, "w": 24, "x": 0, "y": 36 },
-      "options": {
-        "showTime": true, "showLabels": false, "showCommonLabels": false,
-        "wrapLogMessage": true, "prettifyLogMessage": true, "enableLogDetails": true,
-        "dedupStrategy": "none", "sortOrder": "Descending"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": { "type": "loki", "uid": "loki-halalone" },
-          "queryType": "range",
-          "expr": "{job=\"halalify-backend\"} | json event=\"event\" | event=~`agent\\.node\\.failed|judge\\..*|tool\\..*\\.failed|web_search\\.exa_stream\\..*|vision_llm\\..*|search_node\\.declined_tool`"
-        }
-      ]
->>>>>>> fa6f511 (monitoring dasboards: stable version of refactor-agent)
     }
   ]
 }

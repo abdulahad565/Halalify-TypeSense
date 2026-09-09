@@ -1,0 +1,169 @@
+"""Global query-result cache backed by Valkey.
+
+Different users asking about the same product in different words share one
+entry. The wording problem is solved upstream: search_node's LLM turns any
+phrasing (and any follow-up, since it sees the chat history) into structured
+KeywordFilterSearch args. The key is built from those args, not the raw text:
+
+    "Is Nestle KitKat halal in UK?"          ┐
+    "kitkat by nestlé — halal? I'm in the UK" ┴─> {norm_name: kitkat, companies: [nestle], sold_in: [UK]}
+                                                   └─> qcache:v3:kw:<hash>
+
+Only the products the user sees (matched/relevant, already projected and capped)
+are stored, so a hit skips the Typesense search and the judge LLM entirely.
+
+Rules for what is cacheable live with the callers (nodes.py): keyword-first
+searches only, never when WebSearch ran, never for image-derived prompts.
+
+Every op fails OPEN: if Valkey is unreachable the agent just runs normally.
+
+Rollout: QCACHE_SHADOW=true (default) looks up and saves but never serves a
+hit — it only logs whether the cached answer would have agreed with the fresh
+one. Flip it to false once the logs look right.
+"""
+import os
+import sys
+import json
+import hashlib
+import unicodedata
+from datetime import datetime, timezone
+
+from log.logger import log
+from config.valkey_client import get_valkey_sync
+
+# `!= "false"` so the feature is on unless explicitly disabled.
+ENABLED = os.getenv("QCACHE_ENABLED", "true").lower() != "false"
+SHADOW = os.getenv("QCACHE_SHADOW", "true").lower() != "false"
+TTL_S = int(os.getenv("QCACHE_TTL_S", str(14 * 24 * 3600)))  # 14 days
+
+_VERSION_KEY = "qcache:version"
+
+
+def _norm_text(value) -> str:
+    """Normalise a text-matched value the way Typesense's text search already
+    treats it: case-, accent- and punctuation-insensitive. Hyphens/apostrophes
+    are dropped (so "Kit-Kat" == "KitKat"), other punctuation becomes a space."""
+    s = unicodedata.normalize("NFKD", str(value))
+    s = "".join(c for c in s if not unicodedata.combining(c)).lower()
+    s = s.replace("-", "").replace("'", "").replace("’", "")
+    s = "".join(c if c.isalnum() else " " for c in s)
+    return " ".join(s.split())
+
+
+def _norm_filter(value):
+    """Filters are exact matches (`:=`) in Typesense, which is case-sensitive, so
+    only trim and order them — lowercasing here could make a query that returns
+    nothing ("halal") share a key with one that returns products ("Halal")."""
+    if isinstance(value, list):
+        return sorted({str(v).strip() for v in value if str(v).strip()})
+    return str(value).strip()
+
+
+def _as_dict(obj) -> dict:
+    """Tool-call args arrive as plain dicts, but tolerate pydantic models too."""
+    if not obj:
+        return {}
+    if hasattr(obj, "model_dump"):
+        return obj.model_dump()
+    return dict(obj)
+
+
+def canonical_args(keyword_args, filter_args) -> dict | None:
+    """The wording-independent fingerprint of a KeywordFilterSearch call, or None
+    if the call has nothing to key on."""
+    kw = _as_dict(keyword_args)
+    fl = _as_dict(filter_args)
+
+    out: dict = {}
+    name = _norm_text(kw.get("norm_name") or "")
+    if name:
+        out["norm_name"] = name
+    companies = sorted({_norm_text(c) for c in (kw.get("companies") or []) if _norm_text(c)})
+    if companies:
+        out["companies"] = companies
+
+    filters = {}
+    for k, v in fl.items():
+        nv = _norm_filter(v) if v else None
+        if nv:
+            filters[k] = nv
+    if filters:
+        out["filters"] = filters
+
+    return out or None
+
+
+def _redis():
+    return get_valkey_sync()
+
+
+def current_version() -> str:
+    """The cache generation. Bumped after product data changes, which orphans
+    every older key (they then expire on their own — nothing is scanned/deleted)."""
+    # "0" (not "1") when unset: INCR on a missing key yields 1, so the first bump
+    # must land on a different generation than the default.
+    return _redis().get(_VERSION_KEY) or "0"
+
+
+def build_key(keyword_args, filter_args) -> str | None:
+    """Full Valkey key for a KeywordFilterSearch call, or None if it can't be
+    keyed or Valkey is unreachable."""
+    if not ENABLED:
+        return None
+    canon = canonical_args(keyword_args, filter_args)
+    if canon is None:
+        return None
+    payload = json.dumps(canon, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:32]
+    try:
+        version = current_version()
+    except Exception as e:
+        log.warning("qcache.version.failed", error=str(e), error_type=type(e).__name__)
+        return None
+    key = f"qcache:v{version}:kw:{digest}"
+    log.info("qcache.key", key=key, canonical=payload)
+    return key
+
+
+def get(key: str) -> dict | None:
+    """Cached {matched, relevant} for a key, or None on a miss/error."""
+    try:
+        raw = _redis().get(key)
+        return json.loads(raw) if raw else None
+    except Exception as e:
+        log.warning("qcache.get.failed", error=str(e), error_type=type(e).__name__)
+        return None
+
+
+def put(key: str, matched: list, relevant: list) -> None:
+    """Store the products the user was shown. Best-effort."""
+    value = {
+        "matched": matched,
+        "relevant": relevant,
+        "cached_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        _redis().set(key, json.dumps(value, ensure_ascii=False), ex=TTL_S)
+        log.info("qcache.saved", key=key, matched=len(matched), relevant=len(relevant))
+    except Exception as e:
+        log.warning("qcache.put.failed", error=str(e), error_type=type(e).__name__)
+
+
+def ids(products: list) -> list:
+    return [p.get("canonical_id") for p in products or []]
+
+
+def bump_version() -> int:
+    """Invalidate the whole cache. Call after inserting/updating products."""
+    new = _redis().incr(_VERSION_KEY)
+    log.info("qcache.version.bumped", version=new)
+    return new
+
+
+if __name__ == "__main__":
+    # Manual invalidation after a product data change:
+    #   python query_cache.py bump
+    if sys.argv[1:] == ["bump"]:
+        print(f"query cache version is now {bump_version()}")
+    else:
+        print("usage: python query_cache.py bump")
