@@ -4,6 +4,7 @@ import ImageIcon from "../icons/image_icon.svg"
 import ScanIcon from "../icons/scan_icon.svg"
 import QRBarcodeScanner from "@/components/QRBarcodeScanner"
 import ImageExtractionDialog from "@/components/ImageExtractionDialog"
+import ImageUploadGuidanceDialog from "@/components/ImageUploadGuidanceDialog"
 import CompactionDialog from "@/components/CompactionDialog"
 import { useRef, useState, useEffect, useReducer, type ChangeEvent, type ClipboardEvent } from "react"
 import { motion, AnimatePresence, m } from "framer-motion"
@@ -285,6 +286,7 @@ export default function HalalifyChat({ threadId, ws, historyLoading, onHistoryLo
     const [textPresent, setTextPresent] = useState(false)
     const [pendingImage, setPendingImage] = useState<AttachedImage | null>(null)
     const [dialogOpen, setDialogOpen] = useState(false)
+    const [guidanceDialogOpen, setGuidanceDialogOpen] = useState(false)
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
     const [scannerOpen, setScannerOpen] = useState(false)
     // Transient toast for rate-limit / high-load notices from the backend.
@@ -499,12 +501,19 @@ export default function HalalifyChat({ threadId, ws, historyLoading, onHistoryLo
         return () => clearTimeout(id)
     }, [toast])
 
-    const handleImageSelect = async (e: ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0]
+    const processSelectedFile = async (file: File) => {
         if (!file || !file.type.startsWith("image/")) return
         const img = await fileToAttachedImage(file)
         setPendingImage(img)
+        setGuidanceDialogOpen(false)
         setDialogOpen(true)
+    }
+
+    const handleImageSelect = async (e: ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (file) {
+            await processSelectedFile(file)
+        }
         e.target.value = ""
     }
 
@@ -628,7 +637,7 @@ export default function HalalifyChat({ threadId, ws, historyLoading, onHistoryLo
                             }
                         }}
                         contentEditable={isConnected}
-                        className={`focus:outline-none w-full inter-400 max-h-[200px] overflow-y-auto min-h-6 ${isLight ? "text-black/90" : "text-white/90"}`}
+                        className={`focus:outline-none w-full inter-400 max-h-40 overflow-y-auto min-h-6 ${isLight ? "text-black/90" : "text-white/90"}`}
                     />
                 </div>
 
@@ -645,7 +654,7 @@ export default function HalalifyChat({ threadId, ws, historyLoading, onHistoryLo
                 </button> */}
                 <button
                     type="button"
-                    onClick={() => !loading && !compactionBlocking && fileInputRef.current?.click()}
+                    onClick={() => !loading && !compactionBlocking && setGuidanceDialogOpen(true)}
                     aria-label="Upload image"
                     className={`shrink-0 w-6 h-6 transition-colors ${loading || compactionBlocking ? "cursor-default opacity-30" : "cursor-pointer"} ${isLight ? "text-black/40 hover:text-black" : "text-white/40 hover:text-white/80"}`}
                 >
@@ -999,7 +1008,7 @@ export default function HalalifyChat({ threadId, ws, historyLoading, onHistoryLo
                                                                     : "border border-white/8 bg-white/2 hover:bg-white/4 hover:border-white/15 focus-visible:ring-1 focus-visible:ring-white/20"
                                                                     }`}
                                                             >
-                                                                <div className={`absolute left-0 top-0 bottom-0 w-[3px] rounded-l-xl ${statusAccent(product.halal_status ?? "")}`} />
+                                                                <div className={`absolute left-0 top-0 bottom-0 w-0.75 rounded-l-xl ${statusAccent(product.halal_status ?? "")}`} />
                                                                 <div className="pl-3 flex flex-col gap-y-3">
                                                                     <div className="flex items-start justify-between gap-x-4">
                                                                         <p className={`switzer-500 capitalize leading-snug ${isLight ? "text-black" : "text-white"}`}>
@@ -1167,6 +1176,23 @@ export default function HalalifyChat({ threadId, ws, historyLoading, onHistoryLo
                 product={selectedProduct}
                 onClose={() => setSelectedProduct(null)}
             />
+
+            <AnimatePresence>
+                {guidanceDialogOpen && (
+                    <ImageUploadGuidanceDialog
+                        key="image-guidance-dialog"
+                        theme={theme}
+                        onProceedToUpload={() => {
+                            setGuidanceDialogOpen(false)
+                            fileInputRef.current?.click()
+                        }}
+                        onFileSelected={(file) => {
+                            processSelectedFile(file)
+                        }}
+                        onClose={() => setGuidanceDialogOpen(false)}
+                    />
+                )}
+            </AnimatePresence>
 
             <AnimatePresence>
                 {dialogOpen && pendingImage && (
