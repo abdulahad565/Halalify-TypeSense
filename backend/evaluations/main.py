@@ -1,16 +1,3 @@
-import os
-from dotenv import load_dotenv
-
-# Point this process at the evaluation LangSmith account when one is configured.
-# Both the client AND the background tracer read LANGSMITH_API_KEY from the
-# environment, so it is promoted here before any other import creates them.
-# The .env file is never modified; the running app keeps its own key.
-load_dotenv(override=True)
-
-if os.getenv("LANGSMITH_EVAL_API_KEY"):
-    os.environ["LANGSMITH_API_KEY"] = os.environ["LANGSMITH_EVAL_API_KEY"]
-    os.environ["LANGSMITH_PROJECT"] = os.getenv("LANGSMITH_EVAL_PROJECT", "halal-one-evals")
-
 from config.langsmith_client import get_langsmith_client
 import asyncio
 # Datasets (LangSmith dataset names). Both files export `dataset_name`, so alias.
@@ -116,5 +103,5 @@ async def run_knowledge_retention_evaluation():
 # asyncio.run(run_trajectory_evaluation())
 # asyncio.run(run_retrieval_relevance_evaluation())
 # asyncio.run(run_judge_node_evaluation())
-# asyncio.run(run_task_completion_evaluation())
-asyncio.run(run_knowledge_retention_evaluation())
+asyncio.run(run_task_completion_evaluation())
+# asyncio.run(run_knowledge_retention_evaluation())

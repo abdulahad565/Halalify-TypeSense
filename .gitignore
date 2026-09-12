@@ -1,5 +1,4 @@
 typesense-data/
 .claude/
-/graphify-out
+/graphify-out 
 /canonical_products
-.vscode/
