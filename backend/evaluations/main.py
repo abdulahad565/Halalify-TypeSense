@@ -1,5 +1,36 @@
 import os
 from dotenv import load_dotenv
+from config.langsmith_client import get_langsmith_client
+import asyncio
+
+# Datasets (LangSmith dataset names). Both files export `dataset_name`, so alias.
+from evaluations.datasets.trajectory_dataset import (
+    dataset_name as trajectory_dataset_name,
+)
+from evaluations.datasets.classification_dataset import (
+    dataset_name as classification_dataset_name,
+)
+from evaluations.datasets.retrieval_relevance_dataset import (
+    dataset_name as retrieval_relevance_dataset_name,
+)
+from evaluations.datasets.search_node_args_dataset import (
+    dataset_name as search_node_args_dataset_name,
+)
+
+# Evaluators
+from evaluations.target_functions.search_trajectory import run_search_node
+from evaluations.target_functions.intent_classifier import run_intent_classifier
+from evaluations.target_functions.retrieval_relevance import run_retrieval_relevance
+from evaluations.target_functions.judge_node import run_judge_node
+from evaluations.target_functions.search_node_args import run_search_node_args
+from evaluations.evaluators.search_node_args_evaluator import (
+    search_node_args_correctness,
+)
+from evaluations.evaluators.classification_correctness import correct_classification
+from evaluations.evaluators.trajectory_correctness import agent_trajectory_correctness
+from evaluations.evaluators.retrieval_relevance import retrieval_relevance
+from evaluations.evaluators.judge_node_evaluator import judge_node_evaluator
+
 
 # Point this process at the evaluation LangSmith account when one is configured.
 # Both the client AND the background tracer read LANGSMITH_API_KEY from the
@@ -11,27 +42,6 @@ if os.getenv("LANGSMITH_EVAL_API_KEY"):
     os.environ["LANGSMITH_API_KEY"] = os.environ["LANGSMITH_EVAL_API_KEY"]
     os.environ["LANGSMITH_PROJECT"] = os.getenv("LANGSMITH_EVAL_PROJECT", "halal-one-evals")
 
-from config.langsmith_client import get_langsmith_client
-import asyncio
-# Datasets (LangSmith dataset names). Both files export `dataset_name`, so alias.
-from evaluations.datasets.trajectory_dataset import dataset_name as trajectory_dataset_name
-from evaluations.datasets.classification_dataset import dataset_name as classification_dataset_name
-from evaluations.datasets.retrieval_relevance_dataset import dataset_name as retrieval_relevance_dataset_name
-from evaluations.datasets.judge_node_dataset import dataset_name as judge_node_dataset_name, variant_dataset_name
-from evaluations.datasets.search_node_args_dataset import dataset_name as search_node_args_dataset_name
-from evaluations.datasets.keyword_search_dataset import dataset_name as keyword_search_dataset_name
-from evaluations.datasets.semantic_search_dataset import dataset_name as semantic_search_dataset_name
-# Evaluators
-from evaluations.target_functions.search_trajectory import run_search_node
-from evaluations.target_functions.intent_classifier import run_intent_classifier
-from evaluations.target_functions.retrieval_relevance import run_retrieval_relevance
-from evaluations.target_functions.judge_node import run_judge_node
-from evaluations.target_functions.search_node_args import run_search_node_args
-from evaluations.evaluators.search_node_args_evaluator import search_node_args_correctness
-from evaluations.evaluators.classification_correctness import correct_classification
-from evaluations.evaluators.trajectory_correctness import agent_trajectory_correctness
-from evaluations.evaluators.retrieval_relevance import retrieval_relevance
-from evaluations.evaluators.judge_node_evaluator import judge_node_evaluator
 
 
 # Evaluates Node 1 — intent classification: does the agent route each prompt to the correct branch (search_node vs response_node)?
