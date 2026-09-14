@@ -11,7 +11,7 @@ from structlog.contextvars import bind_contextvars
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
 from agents.main_agent import build_image_url
-from llms.vision_llm import invoke_llm_with_image
+from llms.vision_llm import invoke_llm_with_image, close_vlms
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel as PydanticBaseModel
 from agents.langgraph_agent.main_langgraph_agent import stream_agent, compact_session
@@ -97,6 +97,7 @@ async def lifespan(_app: FastAPI):
     # Drain BEFORE tearing anything down: a finishing pipeline still needs Valkey
     # to append history, publish its answer, and release its lease.
     await _drain_pipelines()
+    await close_vlms()   # close Fireworks VLM aiohttp sessions (no "Unclosed client session")
     await stop_connection_sweeper()
     await close_valkey()
 

@@ -23,13 +23,10 @@ FIREWORKS_API_KEY = os.getenv("FIREWORKS_AI_API_KEY")
 # produce valid output) we move to the next one.
 FALLBACK_VLMS = {
     "primary_vlm": "accounts/fireworks/models/glm-5p3-flash",
-    "seconday_vlm": "accounts/fireworks/models/muse-glimmer-30b",
+    "secondary_vlm": "accounts/fireworks/models/muse-glimmer-30b",
     "tertiary_vlm": "accounts/fireworks/models/deepseek-v4-flash-vision-exp",
 }
-# Alias for typo tolerance
-FALLBACK_VLMS["secondary_vlm"] = FALLBACK_VLMS["seconday_vlm"]
-
-_VLM_ORDER = ["primary_vlm", "seconday_vlm", "tertiary_vlm"]
+_VLM_ORDER = ["primary_vlm", "secondary_vlm", "tertiary_vlm"]
 
 # Each schema-fix retry RE-SENDS the image (image tokens), so keep this low. A model
 # that still can't produce valid output after this many tries hands off to the next.
@@ -90,11 +87,36 @@ _VLMS = {pref: _build_vlm(model_id) for pref, model_id in FALLBACK_VLMS.items()}
 
 def select_vlm(model_preference: str):
     """Return the cached structured VLM for a preference key
-    ("primary_vlm" | "seconday_vlm" | "tertiary_vlm")."""
+    ("primary_vlm" | "secondary_vlm" | "tertiary_vlm")."""
     if not isinstance(model_preference, str):
         raise TypeError("Model preference must be a string")
     return _VLMS[model_preference]
 
+
+async def close_vlms() -> None:
+    """Close each cached VLM's underlying Fireworks aiohttp session on shutdown.
+
+    ChatFireworks builds an AsyncFireworks client on first ainvoke whose FireworksClient
+    holds an aiohttp ClientSession (reused per client, never closed by the SDK/langchain).
+    Left to GC it logs 'Unclosed client session'; closing it here avoids that. Clients
+    never invoked have no async_client yet, so they're skipped. Call from app shutdown.
+    """
+    import inspect
+    for vlm in _VLMS.values():
+        client = getattr(getattr(vlm, "async_client", None), "_client", None)
+        if client is None or getattr(client, "_aiohttp_session", None) is None:
+            continue
+        # The async client's aiohttp session must be closed via the async aclose();
+        # the sync close() returns None and won't await it. Prefer aclose.
+        closer = getattr(client, "aclose", None) or getattr(client, "close", None)
+        if closer is None:
+            continue
+        try:
+            res = closer()
+            if inspect.isawaitable(res):
+                await res
+        except Exception as e:
+            log.warning("vision_llm.close_failed", error=str(e), error_type=type(e).__name__)
 
 SYSTEM_INSTRUCTIONS = """
 You are an expert specialist for extracting key product information strictly from packaging images.
@@ -253,7 +275,7 @@ async def invoke_llm_with_image(
 ) -> dict[str, Any]:
     """Extract product fields from an image, trying the fallback VLMs in order (or a specific model if requested).
 
-    If model_preference is specified ('primary_vlm', 'seconday_vlm' / 'secondary_vlm', 'tertiary_vlm'),
+    If model_preference is specified ('primary_vlm', 'secondary_vlm', 'tertiary_vlm'),
     only that model is evaluated with its feedback retry.
     Otherwise, iterates over the fallback order (_VLM_ORDER).
 
