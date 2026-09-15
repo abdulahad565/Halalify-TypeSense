@@ -136,17 +136,119 @@ def get(key: str) -> dict | None:
 
 
 def put(key: str, matched: list, relevant: list) -> None:
-    """Store the products the user was shown. Best-effort."""
+    """Store the products the user was shown, and index every card by its hard
+    identifiers so identifier-only questions can find it later. Best-effort."""
     value = {
         "matched": matched,
         "relevant": relevant,
         "cached_at": datetime.now(timezone.utc).isoformat(),
     }
+    version = key.split(":")[1]  # "qcache:v3:kw:..." -> "v3"
     try:
-        _redis().set(key, json.dumps(value, ensure_ascii=False), ex=TTL_S)
-        log.info("qcache.saved", key=key, matched=len(matched), relevant=len(relevant))
+        pipe = _redis().pipeline(transaction=False)
+        pipe.set(key, json.dumps(value, ensure_ascii=False), ex=TTL_S)
+        indexed = _index_identifiers(pipe, version, matched + relevant)
+        pipe.execute()
+        log.info("qcache.saved", key=key, matched=len(matched), relevant=len(relevant), identifiers_indexed=indexed)
     except Exception as e:
         log.warning("qcache.put.failed", error=str(e), error_type=type(e).__name__)
+
+
+# ---- identifier index ----
+# Questions made only of hard identifiers ("barcode: 21515") are answered from the
+# product CARDS already in the cache, whatever question originally saved them —
+# e.g. a KitKat saved for "is nestle kitkat halal?" answers a later barcode-only
+# question. Scanning every cached card would slow down as the cache grows, so each
+# card is indexed by its identifiers at save time instead:
+#
+#   qcache:v3:id:barcodes:21515  ->  HASH { canonical_id: card JSON, ... }
+#
+# A HASH because one identifier can belong to several products (variants).
+# Version-prefixed and TTL'd like the main entries, so a bump invalidates both.
+IDENTIFIER_FIELDS = ("barcodes", "fda_numbers", "cert_numbers")
+
+
+def _norm_identifier(value) -> str:
+    """Case-, hyphen- and space-insensitive, so "01-2345", "012345" and
+    "01 2345" are the same identifier (matches the loose web-result check)."""
+    return "".join(str(value).split()).replace("-", "").lower()
+
+
+def _identifier_key(version: str, field: str, value: str) -> str:
+    return f"qcache:{version}:id:{field}:{value}"
+
+
+def _index_identifiers(pipe, version: str, products: list) -> int:
+    """Queue HSETs indexing each card under each of its identifier values."""
+    count = 0
+    for card in products:
+        pid = card.get("canonical_id")
+        if not pid:
+            continue
+        blob = json.dumps(card, ensure_ascii=False)
+        for field in IDENTIFIER_FIELDS:
+            raw = card.get(field) or []
+            for value in {_norm_identifier(v) for v in (raw if isinstance(raw, list) else [raw])}:
+                if not value:
+                    continue
+                k = _identifier_key(version, field, value)
+                pipe.hset(k, pid, blob)
+                pipe.expire(k, TTL_S)
+                count += 1
+    return count
+
+
+def identifier_only_query(keyword_args, filter_args) -> dict | None:
+    """{field: [normalised values]} if the search is ONLY identifiers (no product
+    name, no brand, no other filter), else None."""
+    kw = _as_dict(keyword_args)
+    if kw.get("norm_name") or kw.get("companies"):
+        return None
+    active = {k: v for k, v in _as_dict(filter_args).items() if v}
+    if not active or any(k not in IDENTIFIER_FIELDS for k in active):
+        return None
+    out = {}
+    for field, raw in active.items():
+        values = {_norm_identifier(v) for v in (raw if isinstance(raw, list) else [raw])}
+        values.discard("")
+        if values:
+            out[field] = sorted(values)
+    return out or None
+
+
+def find_by_identifiers(identifiers: dict) -> list | None:
+    """Cached cards matching an identifier-only search, or None.
+
+    Mirrors the DB filter semantics: values within one field are OR (any of the
+    barcodes), different fields are AND (barcode AND fda number). Returns None
+    unless EVERY requested value is known to the cache — if one is missing, the
+    DB may hold a product the cache has never seen, so the answer can't be
+    trusted to be complete.
+    """
+    try:
+        version = f"v{current_version()}"
+        pipe = _redis().pipeline(transaction=False)
+        order = []
+        for field, values in identifiers.items():
+            for value in values:
+                pipe.hgetall(_identifier_key(version, field, value))
+                order.append(field)
+        results = pipe.execute()
+    except Exception as e:
+        log.warning("qcache.identifier_lookup.failed", error=str(e), error_type=type(e).__name__)
+        return None
+
+    per_field: dict = {}
+    for field, found in zip(order, results):
+        if not found:
+            return None
+        per_field.setdefault(field, {}).update({pid: json.loads(card) for pid, card in found.items()})
+
+    common = set.intersection(*(set(cards) for cards in per_field.values()))
+    if not common:
+        return None
+    first = next(iter(per_field.values()))
+    return [card for pid, card in first.items() if pid in common]
 
 
 def ids(products: list) -> list:
