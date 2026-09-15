@@ -211,6 +211,7 @@ async def _stream_and_persist(
     prompt: str,
     conversation_history: list,
     pending_user_persist: "asyncio.Task | None" = None,
+    use_cache: bool = True,
 ):
     """Run the agent and land the final answer. Does NOT persist the user message —
     the caller has either already done that (paused-turn resume) or handed us a
@@ -224,7 +225,7 @@ async def _stream_and_persist(
     gated on that write reaching Valkey.
     """
     try:
-        async for chunk in stream_agent(prompt, conversation_history):
+        async for chunk in stream_agent(prompt, conversation_history, use_cache=use_cache):
             if chunk.get("type") == "results":
                 try:
                     response = chunk.get("response", "")
@@ -353,6 +354,10 @@ async def run_prompt_pipeline(session_id: str, user_id: str, prompt: str, image_
         await append_history(session_id, "user", prompt, uid)
 
     persist_user_task = asyncio.create_task(_persist_user_turn())
+
+    # Image turns never touch the global query cache: the prompt is built from a
+    # vision read of one specific photo, not something another user can share.
+    use_cache = image_bytes is None
     
     history.append({"id": None, "role": "user", "content": prompt})
     conversation_history = _history_to_messages(history, summary)
@@ -374,13 +379,13 @@ async def run_prompt_pipeline(session_id: str, user_id: str, prompt: str, image_
             # Forced: compact inline (same lease), then answer with summary + tail.
             summary, kept = await _run_compaction(user_id, session_id)
             conversation_history = _history_to_messages(kept, summary)
-            await _stream_and_persist(user_id, session_id, prompt, conversation_history)
+            await _stream_and_persist(user_id, session_id, prompt, conversation_history, use_cache=use_cache)
             return
         # Pause this turn: stash the prompt and ask. Returning releases the
         # pipeline lease; the phase gate blocks new prompts until the user
         # decides. compact_confirm / compact_decline resume from here.
         await save_compaction(session_id, {
-            "phase": "awaiting", "declines": declines, "pending": {"prompt": prompt},
+            "phase": "awaiting", "declines": declines, "pending": {"prompt": prompt, "use_cache": use_cache},
             "message": COMPACTION_ASK_MSG, "disclaimer": COMPACTION_ASK_DISCLAIMER,
         })
         await publish_chunk(user_id, session_id, {
@@ -388,7 +393,7 @@ async def run_prompt_pipeline(session_id: str, user_id: str, prompt: str, image_
         })
         return
 
-    await _stream_and_persist(user_id, session_id, prompt, conversation_history, pending_user_persist=persist_user_task)
+    await _stream_and_persist(user_id, session_id, prompt, conversation_history, pending_user_persist=persist_user_task, use_cache=use_cache)
 
 
 async def resume_after_confirm(session_id: str, user_id: str):
@@ -403,7 +408,7 @@ async def resume_after_confirm(session_id: str, user_id: str):
         return
     summary, kept = await _run_compaction(user_id, session_id)
     conversation_history = _history_to_messages(kept, summary)
-    await _stream_and_persist(user_id, session_id, pending["prompt"], conversation_history)
+    await _stream_and_persist(user_id, session_id, pending["prompt"], conversation_history, use_cache=pending.get("use_cache", True))
 
 
 async def resume_after_decline(session_id: str, user_id: str):
@@ -420,7 +425,7 @@ async def resume_after_decline(session_id: str, user_id: str):
     await publish_chunk(user_id, session_id, {"type": "compaction_done"})
     summary, history = await _load_context(session_id, user_id)
     conversation_history = _history_to_messages(history, summary)
-    await _stream_and_persist(user_id, session_id, pending["prompt"], conversation_history)
+    await _stream_and_persist(user_id, session_id, pending["prompt"], conversation_history, use_cache=pending.get("use_cache", True))
 
 
 class ExtractImageRequest(PydanticBaseModel):
