@@ -2,6 +2,7 @@ from rapidfuzz import fuzz
 from typing import Optional
 from langsmith import traceable
 from ..models.models import FilterArgs
+from log.logger import log
 
 COLLECTION = "halal_products"
 
@@ -410,3 +411,75 @@ def canonicalize_args(tool_args: dict) -> dict:
 
 # for example in example_lists:
 #     print(canonicalize_args(example))
+
+
+def build_search_prompt(tool_names: list[str], allow_direct: bool = False) -> str:
+    """Assemble the search-node system prompt for exactly the tools bound on this call.
+
+    The assembly logic lives here; the prompt TEXT constants stay in prompts/prompt.py
+    and are imported lazily inside this function to avoid a circular import (prompt.py
+    imports KEYWORD/SEMANTIC/WEB/CANONICAL_LISTS from this module at load time)."""
+    from ..prompts.prompt import (
+        SEARCH_PROMPT_BASE, SEARCH_ROUTING_RULES,
+        INSTR_KEYWORD_NAME, INSTR_KEYWORD_SEMANTIC_BOUNDARY, INSTR_KEYWORD_FILTERS_ONLY,
+        INSTR_SEMANTIC, INSTR_KEYWORD_WEB, INSTR_INTENT_SCOPE, INSTR_NO_INFER,
+        INSTR_NORMALIZATION, INSTR_SECURITY,
+        PRODUCT_SCHEMA_HEADER, PRODUCT_SCHEMA_KEYWORD, PRODUCT_SCHEMA_FILTERS,
+        CONTEXT, _TOOL_BLOCKS, SEARCH_PROMPT_TRAILER,
+    )
+
+    if not isinstance(tool_names, list) or not all(
+        isinstance(n, str) for n in tool_names
+    ):
+        log.warning("build_search_prompt.bad_tool_names", tool_names=repr(tool_names))
+        raise TypeError("tool_names must be a list of strings")
+    names = set(tool_names)
+    has_filter_tool = KEYWORD in names or SEMANTIC in names
+
+    parts = [SEARCH_PROMPT_BASE]
+    if allow_direct:
+        parts.append(SEARCH_ROUTING_RULES)
+
+    # Instructions gated to the bound tools: a selection rule only appears when its
+    # tool is available, the keyword↔semantic boundary only when both are, and the
+    # intent/scope rule only on the first (unforced) call. Numbered fresh each call.
+    instr = []
+    if KEYWORD in names:
+        instr.append(INSTR_KEYWORD_NAME)
+    if KEYWORD in names and SEMANTIC in names:
+        instr.append(INSTR_KEYWORD_SEMANTIC_BOUNDARY)
+    if KEYWORD in names:
+        instr.append(INSTR_KEYWORD_FILTERS_ONLY)
+    if SEMANTIC in names:
+        instr.append(INSTR_SEMANTIC)
+    if WEB in names:
+        instr.append(INSTR_KEYWORD_WEB)
+    if allow_direct:
+        instr.append(INSTR_INTENT_SCOPE)
+    instr.append(INSTR_NO_INFER)
+    if has_filter_tool:
+        instr.append(INSTR_NORMALIZATION)
+    instr.append(INSTR_SECURITY)
+    parts.append(
+        "## INSTRUCTIONS\n\n" + "\n\n".join(f"{i}. {t}" for i, t in enumerate(instr, 1))
+    )
+
+    # Context: product schema + canonical filter lists — only for DB tools that
+    # accept filters (a bare WebSearch loop call needs neither).
+    if has_filter_tool:
+        schema = [PRODUCT_SCHEMA_HEADER]
+        if KEYWORD in names:
+            schema.append(PRODUCT_SCHEMA_KEYWORD)
+        schema.append(PRODUCT_SCHEMA_FILTERS)
+        parts.append("\n\n".join(schema))
+        parts.append(CONTEXT)
+
+    # Examples per bound tool, in ladder order, each labelled by its tool name.
+    tool_blocks = [
+        f"### {name}\n\n{block}" for name, block in _TOOL_BLOCKS if name in names
+    ]
+    if tool_blocks:
+        parts.append("## TOOLS\n\n" + "\n\n".join(tool_blocks))
+
+    parts.append(SEARCH_PROMPT_TRAILER)
+    return "\n\n".join(parts)

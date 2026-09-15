@@ -13,7 +13,6 @@ from langchain.messages import SystemMessage, HumanMessage, ToolMessage, AIMessa
 from ..models.models import SearchAgentState, OutputSchema, JudgeVerdict
 from ..LLMs.llm import standard_llm, judge_llm
 from ..prompts.prompt import (
-    build_search_prompt,
     JUDGE_PROMPT,
     NO_EXACT_SIMILAR_MSG,
     NO_RESULTS_MSG,
@@ -23,6 +22,7 @@ from ..tools.tools import KeywordFilterSearch, SemanticFilterSearch, WebSearch
 from ..utils.utils import (
     KEYWORD_FIELDS,
     WEB_FILTER_FIELDS,
+    build_search_prompt,
     select_tools,
     should_loop,
     validate_ids,
