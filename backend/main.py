@@ -10,11 +10,11 @@ from log.process import logged_process
 from structlog.contextvars import bind_contextvars
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
-from agents.main_agent import build_image_url
-from llms.vision_llm import invoke_llm_with_image, close_vlms
+from agents.langgraph_agent.utils.utils import build_image_url
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel as PydanticBaseModel
 from agents.langgraph_agent.main_langgraph_agent import stream_agent, compact_session
+from llms.vision_llm import invoke_llm_with_image, close_vlms
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Header
 from config.supabase_client import get_supabase
 from config.valkey_client import get_valkey, close_valkey

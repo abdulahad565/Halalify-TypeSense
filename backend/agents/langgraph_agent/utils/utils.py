@@ -413,6 +413,11 @@ def canonicalize_args(tool_args: dict) -> dict:
 #     print(canonicalize_args(example))
 
 
+def build_image_url(base64: str, mime_type: str) -> list:
+    image_url = f"data:{mime_type};base64,{base64}"
+    return image_url
+
+
 def build_search_prompt(tool_names: list[str], allow_direct: bool = False) -> str:
     """Assemble the search-node system prompt for exactly the tools bound on this call.
 
