@@ -292,7 +292,7 @@ async def compact_session(session_id: str, keep_token_budget: int = DEFAULT_KEEP
     )
     return new_summary, kept, True
 
-async def stream_agent(query: str, conversation_history: list):
+async def stream_agent(query: str, conversation_history: list, use_cache: bool = True):
     if not query:
         # Carries "type" like every other event this generator yields, so a client
         # routing on event["type"] handles the validation case with the same branch it
@@ -306,13 +306,6 @@ async def stream_agent(query: str, conversation_history: list):
 
     final_result = None
 
-    # Outer bound on the whole streamed turn, same reasoning as run_agent.
-    # astream() is an async generator, not a single awaitable, so
-    # asyncio.wait_for can't wrap it directly — asyncio.timeout() (3.11+, this
-    # repo pins 3.13) is the right primitive here. A TimeoutError propagates
-    # out of this generator to main.py's _stream_and_persist, whose existing
-    # `except Exception` already turns it into the same ERROR_RESULT any other
-    # agent-stream failure gets.
     async with asyncio.timeout(AGENT_TIMEOUT_S):
         async with aclosing(
             search_agent.astream(
@@ -330,8 +323,7 @@ async def stream_agent(query: str, conversation_history: list):
                                 result = json.loads(messages[-1].content)
                                 final_result = _build_results(
                                     result.get(
-                                        "response",
-                                        "Some error occured, please try again.",
+                                        "response", "Some error occured, please try again."
                                     ),
                                     result,
                                 )
