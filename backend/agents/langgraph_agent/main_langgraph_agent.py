@@ -121,6 +121,7 @@ def _initial_state(query: str, messages: list, use_cache: bool = True) -> dict:
         "cache_key": None,
         "cache_hit": False,
         "cache_shadow": None,
+        "unverified_identifiers": None,
     }
 
 

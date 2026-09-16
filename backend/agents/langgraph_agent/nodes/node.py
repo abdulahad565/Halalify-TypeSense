@@ -14,6 +14,13 @@ from langchain.messages import SystemMessage, HumanMessage, ToolMessage, AIMessa
 from ..models.models import SearchAgentState, OutputSchema, JudgeVerdict
 from ..LLMs.llm import standard_llm, judge_llm
 from ..prompts.prompt import (
+    IDENTIFIER_CLARIFY_MARKER,
+    IDENTIFIER_CLARIFY_MSG,
+    IDENTIFIER_LABELS,
+    INVALID_BARCODE_MARKER,
+    INVALID_BARCODE_NOTE,
+    INVALID_BARCODE_WITH_PRODUCT_MSG,
+    UNVERIFIED_IDENTIFIER_NOTE,
     JUDGE_PROMPT,
     NO_EXACT_SIMILAR_MSG,
     NO_RESULTS_MSG,
@@ -24,6 +31,10 @@ from ..utils.utils import (
     KEYWORD_FIELDS,
     WEB_FILTER_FIELDS,
     build_search_prompt,
+    digits_only,
+    identifier_only_args,
+    is_bare_number,
+    is_valid_barcode,
     select_tools,
     should_loop,
     validate_ids,
@@ -99,6 +110,71 @@ def _web_tool_call(query: str) -> AIMessage:
     )
 
 
+def _as_list(value) -> list:
+    return value if isinstance(value, list) else ([value] if value else [])
+
+
+def _already_asked_identifier(messages: list, value: str) -> bool:
+    """True if we already asked about THIS number in the conversation, so the user's
+    answer ("it's a barcode", "search anyway") runs the search instead of being asked
+    again. Scoped to the value: a different bad number later is still questioned."""
+    wanted = digits_only(value)
+    for m in messages:
+        if getattr(m, "type", None) != "ai":
+            continue
+        content = str(getattr(m, "content", "") or "")
+        asked = IDENTIFIER_CLARIFY_MARKER in content or INVALID_BARCODE_MARKER in content
+        if asked and wanted and wanted in digits_only(content):
+            return True
+    return False
+
+
+def _identifier_clarification(state: SearchAgentState, call: dict) -> str | None:
+    """The question to ask instead of searching, or None to let the search run.
+
+    - Nothing but identifiers, and the user's message was a bare number: which field
+      it belongs to is a guess (barcodes and FDA numbers are both usually 13 digits
+      here) → ask which kind it is.
+    - A barcode that isn't well-formed (wrong length or failing check digit), with or
+      without a product name → it's almost certainly mistyped. On its own: ask which
+      kind + "check the number". With a product/brand: offer to search without it,
+      because searching with it can only return nothing — or, via the web fallback,
+      a product that was never checked against that barcode.
+    Asked once per number: the user can always answer "search anyway".
+    """
+    args = call["args"]
+    keyword_args = args.get("keyword_args") or {}
+    filter_args = args.get("filter_args") or {}
+    identifiers = identifier_only_args(keyword_args, filter_args)
+    bad_barcodes = [str(b) for b in _as_list(dict(filter_args).get("barcodes")) if not is_valid_barcode(b)]
+    bare = bool(identifiers) and is_bare_number(state.get("user_prompt") or "")
+
+    if not bare and not bad_barcodes:
+        return None
+
+    if identifiers:
+        values = [str(v) for vals in identifiers.values() for v in _as_list(vals)]
+        value = bad_barcodes[0] if bad_barcodes else values[0]
+        if _already_asked_identifier(state["messages"], value):
+            return None
+        msg = IDENTIFIER_CLARIFY_MSG.format(value=value)
+        if bad_barcodes:
+            msg += "\n\n" + INVALID_BARCODE_NOTE.format(value=value)
+    else:
+        value = bad_barcodes[0]
+        if _already_asked_identifier(state["messages"], value):
+            return None
+        kw = dict(keyword_args)
+        product = " ".join(
+            [*(str(c) for c in _as_list(kw.get("companies"))), str(kw.get("norm_name") or "")]
+        ).strip() or "the product"
+        msg = INVALID_BARCODE_WITH_PRODUCT_MSG.format(value=value, product=product)
+
+    log.info("identifier.clarify_asked", value=value, bare=bare, bad_barcode=bool(bad_barcodes),
+             identifier_only=bool(identifiers))
+    return msg
+
+
 def search_node(state: SearchAgentState) -> dict:
     """Issue one search tool call, or (first call only) reply directly.
 
@@ -133,13 +209,20 @@ def search_node(state: SearchAgentState) -> dict:
                     return {"messages": [_web_tool_call(query)]}
             return {"messages": [AIMessage(content="")]}
         raise
+    tool_calls = getattr(result, "tool_calls", None)
+    # A turn that comes down to a bare number (or a malformed barcode) is ambiguous:
+    # ask which field it belongs to instead of searching one at random. Only on the
+    # first call, where replying directly is still allowed.
+    if is_first and tool_calls and len(tool_calls) == 1 and tool_calls[0]["name"] == KeywordFilterSearch.name:
+        question = _identifier_clarification(state, tool_calls[0])
+        if question:
+            return {"messages": [AIMessage(content=question)], "classification": "direct"}
+
     update = {"messages": [result]}
     # Only the first (unforced) call decides the route: a tool call means search,
     # no tool call means the model already wrote a direct reply.
     if is_first:
-        update["classification"] = (
-            "search" if getattr(result, "tool_calls", None) else "direct"
-        )
+        update["classification"] = "search" if tool_calls else "direct"
     return update
 
 
@@ -359,6 +442,37 @@ def _judge_matches(keyword_params: dict, candidates: list) -> list:
     return valid
 
 
+def _identifier_filters(filters: dict | None) -> dict:
+    """The identifier filters (barcode / FDA / cert number) the user gave."""
+    return {k: _as_list(v) for k, v in (filters or {}).items() if k in WEB_FILTER_FIELDS and v}
+
+
+def _split_web_results(pool: list, filters: dict | None) -> tuple[list, list]:
+    """Split web results into (passers, unverified) against the identifiers the
+    user gave; products that CONTRADICT an identifier are dropped.
+
+    - passers:    carry every identifier field the user gave, with a matching value
+                  → can be judged as a match.
+    - unverified: simply don't list that field (web pages rarely show barcodes or FDA
+                  numbers) → may be the product, but nothing confirms the number, so
+                  they are only ever shown as similar, never as an exact match.
+    - dropped:    list the field with a DIFFERENT value → contradicts the user.
+    With no identifier filters every product passes, exactly as before.
+    """
+    lenient, _rejected = apply_filter_check(
+        pool, filters, only_fields=WEB_FILTER_FIELDS, loose=True, skip_missing=True
+    )
+    strict, _ = apply_filter_check(
+        lenient, filters, only_fields=WEB_FILTER_FIELDS, loose=True, skip_missing=False
+    )
+    strict_ids = {id(p) for p in strict}
+    unverified = [p for p in lenient if id(p) not in strict_ids]
+    if unverified:
+        log.info("judge.web_unverified_identifiers", count=len(unverified),
+                 fields=sorted(_identifier_filters(filters)))
+    return strict, unverified
+
+
 def judge_node(
     state: SearchAgentState,
 ) -> Command[Literal["response_node", "orchestration_node"]]:
@@ -379,19 +493,16 @@ def judge_node(
     prior_relevant = state.get("relevant", [])
     keyword_params = state.get("keyword_params")
     last_tool = state.get("tools_called", [])[-1] if state.get("tools_called") else None
+    # Web products that don't carry an identifier the user gave: shown as similar,
+    # never as a match (see _split_web_results).
+    unverified: list = []
 
     if state.get("first_tool") == SemanticFilterSearch.name:
         # Semantic-first. Web results (only reachable as a semantic fallback) get the
         # same hard-identifier check as the keyword path; DB semantic results are
         # already Typesense-filtered, so they pass through.
         if last_tool == WebSearch.name:
-            passers, _rejected = apply_filter_check(
-                pool,
-                state.get("filters"),
-                only_fields=WEB_FILTER_FIELDS,
-                loose=True,
-                skip_missing=True,
-            )
+            passers, unverified = _split_web_results(pool, state.get("filters"))
         else:
             passers = pool
         if keyword_params:
@@ -411,13 +522,7 @@ def judge_node(
         # identifiers only, hyphen/case-insensitively, and only where the result
         # actually carries that field (see WEB_FILTER_FIELDS).
         if last_tool == WebSearch.name:
-            passers, _rejected = apply_filter_check(
-                pool,
-                state.get("filters"),
-                only_fields=WEB_FILTER_FIELDS,
-                loose=True,
-                skip_missing=True,
-            )
+            passers, unverified = _split_web_results(pool, state.get("filters"))
         else:
             passers, _rejected = apply_filter_check(pool, state.get("filters"))
         if keyword_params:
@@ -431,8 +536,12 @@ def judge_node(
             matched, non_matched = passers, []
 
     # Non-matching passers are always relevant/similar, accumulated across calls
-    # and de-duplicated. Filter-rejected products never enter relevant.
-    relevant = dedup_by_id(prior_relevant + non_matched)
+    # and de-duplicated. Filter-rejected products never enter relevant; unverified
+    # web products do (they may well be the product — we just can't confirm it).
+    relevant = dedup_by_id(prior_relevant + non_matched + unverified)
+    unverified_update = (
+        {"unverified_identifiers": _identifier_filters(state.get("filters"))} if unverified else {}
+    )
 
     # Author the ToolMessage here (not in tool_node) so it states the JUDGED
     # outcome: on a no-match loop, search_node reads an authoritative "no products
@@ -455,11 +564,12 @@ def judge_node(
                 "messages": tool_messages,
                 "matched": matched,
                 "relevant": relevant,
+                **unverified_update,
             },
             goto="response_node",
         )
     return Command(
-        update={"messages": tool_messages, "matched": [], "relevant": relevant},
+        update={"messages": tool_messages, "matched": [], "relevant": relevant, **unverified_update},
         goto="orchestration_node",
     )
 
@@ -491,6 +601,16 @@ def _project(raw: dict) -> dict:
     return proj
 
 
+def _unverified_note(identifiers: dict | None) -> str:
+    """'I couldn't confirm barcode `X` on these results.' — or '' if nothing to say."""
+    parts = [
+        f"{IDENTIFIER_LABELS.get(field, field)} " + ", ".join(f"`{v}`" for v in values)
+        for field, values in (identifiers or {}).items()
+        if values
+    ]
+    return UNVERIFIED_IDENTIFIER_NOTE.format(identifiers=" or ".join(parts)) if parts else ""
+
+
 def response_node(state: SearchAgentState) -> dict:
     """Attach the already-decided product buckets and set the message.
 
@@ -517,6 +637,11 @@ def response_node(state: SearchAgentState) -> dict:
             if state.get("first_tool") == SemanticFilterSearch.name
             else NO_EXACT_SIMILAR_MSG
         )
+        # Say WHY these aren't exact: some couldn't be checked against the
+        # barcode / FDA / cert number the user gave.
+        note = _unverified_note(state.get("unverified_identifiers"))
+        if note:
+            response = f"{response} {note}"
     elif state.get("classification") == "search":
         response = NO_RESULTS_MSG
     else:
