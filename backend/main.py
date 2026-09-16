@@ -139,7 +139,6 @@ MSG_RATE_REASON = "You're sending messages too quickly. Please retry shortly."
 LLM_BUSY_REASON = "We're experiencing high load right now. Please retry shortly."
 USER_LLM_REASON = "You've reached your request limit for now. Please wait a moment."
 
-
 def _history_to_messages(history: list[dict], summary: str = "") -> list:
     """Agent-form {id, role, content} entries -> LangChain messages for the agent.
     A non-empty rolling summary is prepended as a SystemMessage so it flows into
@@ -152,7 +151,6 @@ def _history_to_messages(history: list[dict], summary: str = "") -> list:
         for m in history
     )
     return messages
-
 
 def _rows_to_history(rows: list[dict]) -> list[dict]:
     """DB message rows -> agent-form history. Each entry carries its DB id so a
