@@ -19,7 +19,7 @@ from .nodes.node import (
     search_node, cache_node, tool_node, judge_node, orchestration_node,
     response_node, should_continue, default_error_handler,
 )
-
+from config.timeouts import AGENT_TIMEOUT_S
 load_dotenv(override=True)
 
 # Fallback keep budget (tokens) if a caller doesn't pass one. Normally main.py
@@ -149,7 +149,7 @@ async def run_agent(query:str, config: dict = None)-> dict:
     result = await asyncio.to_thread(
         search_agent.invoke,
         _initial_state(query, [HumanMessage(query)]),
-        config=config or {"configurable": {"thread_id": str(uuid.uuid4())}}
+        config=config or {"configurable": {"thread_id": str(uuid.uuid4())}}, timeout=AGENT_TIMEOUT_S
     )
     final = json.loads(result["messages"][-1].content)
     return {
@@ -298,81 +298,119 @@ async def stream_agent(query: str, conversation_history: list, use_cache: bool =
         # Carries "type" like every other event this generator yields, so a client
         # routing on event["type"] handles the validation case with the same branch it
         # already uses for the final result.
-        yield {"type": "results", "response": "Please enter a valid query", "documents": []}
+        yield {
+            "type": "results",
+            "response": "Please enter a valid query",
+            "documents": [],
+        }
         return
-    
+
     final_result = None
-    
-    async with aclosing(
-        search_agent.astream(
-            _initial_state(query, conversation_history, use_cache),
-            stream_mode=["messages", "custom", "updates"],
-            version="v2",
-        )
-    ) as stream:
-        async for chunk in stream:
-            if chunk["type"] == "updates":
-                for node_name, state in chunk["data"].items():
-                    if node_name == "__default_error_handler__" and state:
-                        messages = state.get("messages", [])
-                        if messages:
-                            result = json.loads(messages[-1].content)
-                            final_result = _build_results(result.get("response", "Some error occured, please try again."), result)
-                            break
-                    elif node_name == "response_node" and state:
-                        messages = state.get("messages", [])
-                        if messages:
-                            result = json.loads(messages[-1].content)
-                            final_result = _build_results(result.get("response", ""), result)
-                            break
-                if final_result:
-                    break
 
-            elif chunk["type"] == "messages":
-                message, metadata = chunk["data"]
-                node_name = metadata.get("langgraph_node", "")
-                content_blocks = getattr(message, 'content_blocks', [])
-                for block in content_blocks:
-                    if block.get("type") == "reasoning":
-                        reasoning = block.get("reasoning")
-                        if reasoning:
-                            yield {"type": "reasoning", "node": node_name, "reasoning": reasoning}
+    async with asyncio.timeout(AGENT_TIMEOUT_S):
+        async with aclosing(
+            search_agent.astream(
+                _initial_state(query, conversation_history),
+                stream_mode=["messages", "custom", "updates"],
+                version="v2",
+            )
+        ) as stream:
+            async for chunk in stream:
+                if chunk["type"] == "updates":
+                    for node_name, state in chunk["data"].items():
+                        if node_name == "__default_error_handler__" and state:
+                            messages = state.get("messages", [])
+                            if messages:
+                                result = json.loads(messages[-1].content)
+                                final_result = _build_results(
+                                    result.get(
+                                        "response", "Some error occured, please try again."
+                                    ),
+                                    result,
+                                )
+                                break
+                        elif node_name == "response_node" and state:
+                            messages = state.get("messages", [])
+                            if messages:
+                                result = json.loads(messages[-1].content)
+                                final_result = _build_results(
+                                    result.get("response", ""), result
+                                )
+                                break
+                    if final_result:
+                        break
 
-                tool_calls = getattr(message, 'tool_calls', [])
-                for tool_call in tool_calls:
-                    name = tool_call.get("name")
-                    args = tool_call.get("args")
-                    if name == "KeywordFilterSearch":
-                        has_keywords = bool(args.get("keyword_args"))
-                        has_filters = bool(args.get("filter_args"))
-                        msg = None
-                        if has_keywords and has_filters:
-                            msg = "Searching keywords"
-                        elif not has_keywords and has_filters:
-                            msg = "Applying filters"
-                        else:
-                            msg = "Searching relevant products"
-                        yield {"type": "tool_status", "node": node_name, "message": msg, "tool": name, "args": args}
-                    elif name == "SemanticFilterSearch":
-                        yield {"type": "tool_status", "node": node_name, "message": "Performing Semantic Search", "tool": name, "args": args}
-                    elif name == "WebSearch":
-                        yield {"type": "tool_status", "node": node_name, "message": "Searching the web", "tool": name, "args": args}
+                elif chunk["type"] == "messages":
+                    message, metadata = chunk["data"]
+                    node_name = metadata.get("langgraph_node", "")
+                    content_blocks = getattr(message, "content_blocks", [])
+                    for block in content_blocks:
+                        if block.get("type") == "reasoning":
+                            reasoning = block.get("reasoning")
+                            if reasoning:
+                                yield {
+                                    "type": "reasoning",
+                                    "node": node_name,
+                                    "reasoning": reasoning,
+                                }
 
-            elif chunk["type"] == "custom":
-                data = chunk['data']
-                if data.get("type") == "web_source":
-                    yield {
-                        "type": "web_source",
-                        "url": data.get("url"),
-                        "title": data.get("title"),
-                        "favicon": data.get("favicon"),
-                        "highlights": data.get("highlights", []),
-                    }
-                else:
-                    search_results = data.get("search_results", [])
-                    tool = data.get('tool', "Tool Result")
-                    if search_results:
-                        yield {"type": "search_results", "search_results": search_results, "tool": tool}
+                    tool_calls = getattr(message, "tool_calls", [])
+                    for tool_call in tool_calls:
+                        name = tool_call.get("name")
+                        args = tool_call.get("args")
+                        if name == "KeywordFilterSearch":
+                            has_keywords = bool(args.get("keyword_args"))
+                            has_filters = bool(args.get("filter_args"))
+                            msg = None
+                            if has_keywords and has_filters:
+                                msg = "Searching keywords"
+                            elif not has_keywords and has_filters:
+                                msg = "Applying filters"
+                            else:
+                                msg = "Searching relevant products"
+                            yield {
+                                "type": "tool_status",
+                                "node": node_name,
+                                "message": msg,
+                                "tool": name,
+                                "args": args,
+                            }
+                        elif name == "SemanticFilterSearch":
+                            yield {
+                                "type": "tool_status",
+                                "node": node_name,
+                                "message": "Performing Semantic Search",
+                                "tool": name,
+                                "args": args,
+                            }
+                        elif name == "WebSearch":
+                            yield {
+                                "type": "tool_status",
+                                "node": node_name,
+                                "message": "Searching the web",
+                                "tool": name,
+                                "args": args,
+                            }
+
+                elif chunk["type"] == "custom":
+                    data = chunk["data"]
+                    if data.get("type") == "web_source":
+                        yield {
+                            "type": "web_source",
+                            "url": data.get("url"),
+                            "title": data.get("title"),
+                            "favicon": data.get("favicon"),
+                            "highlights": data.get("highlights", []),
+                        }
+                    else:
+                        search_results = data.get("search_results", [])
+                        tool = data.get("tool", "Tool Result")
+                        if search_results:
+                            yield {
+                                "type": "search_results",
+                                "search_results": search_results,
+                                "tool": tool,
+                            }
 
     if final_result:
         yield final_result

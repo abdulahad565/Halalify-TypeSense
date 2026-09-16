@@ -10,11 +10,11 @@ from log.process import logged_process
 from structlog.contextvars import bind_contextvars
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
-from agents.main_agent import build_image_url
-from llms.vision_llm import invoke_llm_with_image, close_vlms
+from agents.langgraph_agent.utils.utils import build_image_url
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel as PydanticBaseModel
 from agents.langgraph_agent.main_langgraph_agent import stream_agent, compact_session
+from llms.vision_llm import invoke_llm_with_image, close_vlms
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Header
 from config.supabase_client import get_supabase
 from config.valkey_client import get_valkey, close_valkey
@@ -139,7 +139,6 @@ MSG_RATE_REASON = "You're sending messages too quickly. Please retry shortly."
 LLM_BUSY_REASON = "We're experiencing high load right now. Please retry shortly."
 USER_LLM_REASON = "You've reached your request limit for now. Please wait a moment."
 
-
 def _history_to_messages(history: list[dict], summary: str = "") -> list:
     """Agent-form {id, role, content} entries -> LangChain messages for the agent.
     A non-empty rolling summary is prepended as a SystemMessage so it flows into
@@ -152,7 +151,6 @@ def _history_to_messages(history: list[dict], summary: str = "") -> list:
         for m in history
     )
     return messages
-
 
 def _rows_to_history(rows: list[dict]) -> list[dict]:
     """DB message rows -> agent-form history. Each entry carries its DB id so a

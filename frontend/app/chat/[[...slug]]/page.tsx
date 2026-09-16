@@ -15,6 +15,7 @@ import type { Product } from "@/types/product"
 import ProductDetailModal from "@/components/product/ProductDetailModal"
 import Markdown from "@/components/markdown/Markdown"
 import ImageExtractionDialog from "@/components/ImageExtractionDialog"
+import ImageUploadGuidanceDialog from "@/components/ImageUploadGuidanceDialog"
 import SearchResultsDialog from "@/components/SearchResultsDialog"
 import CompactionDialog from "@/components/CompactionDialog"
 
@@ -25,9 +26,8 @@ type Message = {
     id: string
     role: "user" | "agent"
     content: string
-    matched?: Product[]      // matches / variants — shown magnified
+    matched?: Product[]      // exact matches / variants — shown magnified
     relevant?: Product[]     // similar products — shown smaller (0.75x)
-    match_label?: string     // section tag for the matched bucket ("Matches" | "Exact Matches")
     imageDataUrl?: string
     imageUrl?: string
 }
@@ -54,7 +54,6 @@ type StreamChunk = {
     documents?: Product[]
     matched?: Product[]
     relevant?: Product[]
-    match_label?: string
     disclaimer?: string | null
     message_id?: string
 }
@@ -172,7 +171,6 @@ const applyChunk = (rt: Runtime, data: StreamChunk): Runtime => {
                 content: data.response ?? "",
                 matched: data.matched ?? data.documents ?? [],
                 relevant: data.relevant ?? [],
-                match_label: data.match_label,
             }
             return {
                 ...rt,
@@ -323,6 +321,7 @@ export default function Page() {
     const [isTextPresent, setIsTextPresent] = useState<boolean>(false)
     const [pendingImage, setPendingImage] = useState<AttachedImage | null>(null)
     const [dialogOpen, setDialogOpen] = useState<boolean>(false)
+    const [guidanceDialogOpen, setGuidanceDialogOpen] = useState<boolean>(false)
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
     const [toast, setToast] = useState<string | null>(null)
     const [showDisconnected, setShowDisconnected] = useState<boolean>(false)
@@ -428,7 +427,7 @@ export default function Page() {
                 if (data.session_id && data.session_id !== threadId) return
                 // search_results is the new {matched, relevant} object OR (older
                 // rows) a flat array — map both. A flat array is treated as matched.
-                const msgs: Message[] = (data.messages ?? []).map((m: { id?: string; role: string; content: string; search_results?: Product[] | { matched?: Product[]; relevant?: Product[]; match_label?: string }; image_url?: string }) => {
+                const msgs: Message[] = (data.messages ?? []).map((m: { id?: string; role: string; content: string; search_results?: Product[] | { matched?: Product[]; relevant?: Product[] }; image_url?: string }) => {
                     const sr = m.search_results
                     const split = sr && !Array.isArray(sr)
                     return {
@@ -437,7 +436,6 @@ export default function Page() {
                         content: m.content,
                         matched: split ? (sr.matched ?? []) : (Array.isArray(sr) ? sr : []),
                         relevant: split ? (sr.relevant ?? []) : [],
-                        match_label: split ? sr.match_label : undefined,
                         imageUrl: m.image_url ?? undefined,
                     }
                 })
@@ -501,25 +499,10 @@ export default function Page() {
     // On mobile the sidebar is an overlay, so close it after an action that
     // reveals the conversation.
     const closeSidebarOnMobile = () => { if (isMobile) setSidebarOpen(false) }
-    // Wipe the composer so a draft never carries into another session or a new chat.
-    const clearComposer = () => { if (inputRef.current) inputRef.current.innerText = ""; setIsTextPresent(false) }
-    const handleNewChat = () => { setHistoryLoading(false); setThreadId(crypto.randomUUID()); syncUrl(null); clearComposer(); closeSidebarOnMobile() }
-    const handleSelectSession = (id: string) => { closeSidebarOnMobile(); if (id === threadId) return; clearComposer(); setHistoryLoading(true); setThreadId(id); syncUrl(id) }
+    const handleNewChat = () => { setHistoryLoading(false); setThreadId(crypto.randomUUID()); syncUrl(null); closeSidebarOnMobile() }
+    const handleSelectSession = (id: string) => { closeSidebarOnMobile(); if (id === threadId) return; setHistoryLoading(true); setThreadId(id); syncUrl(id) }
     const handleDeleteSession = (id: string) => { sendMessage(JSON.stringify({ type: "delete_session", session_id: id })); setConfirmDeleteId(null) }
     const handleSignOut = async () => { await supabase.auth.signOut(); router.push("/login"); router.refresh() }
-
-    // Ctrl/Cmd+N starts a new chat (same as the New Chat button). Keyed on
-    // handleNewChat so it never captures a stale isMobile via closeSidebarOnMobile.
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "n") {
-                e.preventDefault()
-                handleNewChat()
-            }
-        }
-        window.addEventListener("keydown", onKey)
-        return () => window.removeEventListener("keydown", onKey)
-    }, [handleNewChat])
 
     // ---- composer actions ----
     const pickPhrase = () => LOADING_PHRASES[Math.floor(Math.random() * LOADING_PHRASES.length)]
@@ -558,11 +541,16 @@ export default function Page() {
         dispatch({ type: "send", message: { id: crypto.randomUUID(), role: "user", content: text }, phrase: pickPhrase() })
     }
 
-    const handleImageSelect = async (e: ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0]
+    const processSelectedFile = async (file: File) => {
         if (!file || !file.type.startsWith("image/")) return
         setPendingImage(await fileToAttachedImage(file))
+        setGuidanceDialogOpen(false)
         setDialogOpen(true)
+    }
+
+    const handleImageSelect = async (e: ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (file) await processSelectedFile(file)
         e.target.value = ""
     }
 
@@ -614,7 +602,7 @@ export default function Page() {
                 <button
                     type="button"
                     aria-label="Attach image"
-                    onClick={() => isConnected && !loading && !compactionBlocking && fileInputRef.current?.click()}
+                    onClick={() => isConnected && !loading && !compactionBlocking && setGuidanceDialogOpen(true)}
                     style={{ border: "none", background: "transparent", cursor: isConnected && !compactionBlocking ? "pointer" : "default", color: "var(--muted)", display: "flex", padding: 2, opacity: isConnected && !compactionBlocking ? 1 : 0.4 }}
                 >
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3" stroke="currentColor" strokeWidth="1.8" /><circle cx="8.5" cy="9.5" r="1.6" stroke="currentColor" strokeWidth="1.6" /><path d="m4 18 5-5 4 4 3-3 4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -807,7 +795,7 @@ export default function Page() {
 
                     {/* new chat */}
                     <div style={{ padding: "2px 16px 12px" }}>
-                        <button onClick={handleNewChat} title="New chat (Ctrl+N)" style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 9, padding: 12, borderRadius: 12, border: "none", background: "var(--gold-500)", color: "var(--green-900)", cursor: "pointer", fontFamily: "var(--font)", fontSize: 14, fontWeight: 800, letterSpacing: "-0.01em" }}>
+                        <button onClick={handleNewChat} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 9, padding: 12, borderRadius: 12, border: "none", background: "var(--gold-500)", color: "var(--green-900)", cursor: "pointer", fontFamily: "var(--font)", fontSize: 14, fontWeight: 800, letterSpacing: "-0.01em" }}>
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" /></svg>
                             New Chat
                         </button>
@@ -919,7 +907,7 @@ export default function Page() {
                     <div className="cscroll" style={{ flex: 1, overflowY: "auto", padding: "8px 20px 20px" }}>{messagesSkeleton}</div>
                 ) : !hasMessages && !loading ? (
                     <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", position: "relative", padding: 20 }}>
-                        <div aria-hidden="true" style={{ position: "absolute", width: 640, height: 640, borderRadius: "50%", background: "radial-gradient(circle at 50% 45%,color-mix(in srgb,var(--green-700) 20%,transparent),color-mix(in srgb,var(--gold-500) 12%,transparent) 42%,transparent 68%)", filter: "blur(18px)" }} />
+                        <div aria-hidden="true" style={{ position: "absolute", width: 640, height: 640, borderRadius: "50%", background: "radial-gradient(circle at 50% 45%,color-mix(in srgb,var(--green-700) 20%,transparent),color-mix(in srgb,var(--gold-500) 12%,transparent) 42%,transparent 68%)", filter: "blur(18px)", pointerEvents: "none" }} />
                         <div style={{ position: "relative", textAlign: "center" }}>
                             <div style={{ fontSize: "clamp(30px,4vw,44px)", fontWeight: 800, letterSpacing: "-0.02em", color: "var(--green-700)", lineHeight: 1.1 }}>Salam {firstName},</div>
                             <div style={{ fontSize: "clamp(30px,4vw,44px)", fontWeight: 800, letterSpacing: "-0.02em", color: "var(--green-900)", lineHeight: 1.15 }}>How can I assist you today?</div>
@@ -949,12 +937,11 @@ export default function Page() {
                                                         <Markdown textContent={msg.content} theme="light" />
                                                     </div>
                                                 )}
-                                                {/* Matches — magnified, with a small tag. Label is backend-driven:
-                                                    "Matches" (semantic) or "Exact Matches" (keyword). */}
+                                                {/* Exact matches — magnified, with a small tag */}
                                                 {msg.matched && msg.matched.length > 0 && (
                                                     <div style={{ marginTop: 14 }}>
                                                         <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 10px", borderRadius: 999, fontSize: 10.5, fontWeight: 800, background: "color-mix(in srgb,var(--green-700) 12%,transparent)", color: "var(--green-700)", border: "1px solid color-mix(in srgb,var(--green-700) 30%,transparent)", marginBottom: 8 }}>
-                                                            {msg.match_label ?? "Exact Matches"}
+                                                            Exact Match{msg.matched.length > 1 ? "es" : ""}
                                                         </span>
                                                         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                                                             {msg.matched.map((product) => (
@@ -995,6 +982,23 @@ export default function Page() {
 
             {/* ---- modals + toast ---- */}
             <ProductDetailModal product={selectedProduct} onClose={() => setSelectedProduct(null)} />
+
+            <AnimatePresence>
+                {guidanceDialogOpen && (
+                    <ImageUploadGuidanceDialog
+                        key="image-guidance-dialog"
+                        theme="light"
+                        onProceedToUpload={() => {
+                            setGuidanceDialogOpen(false)
+                            fileInputRef.current?.click()
+                        }}
+                        onFileSelected={(file) => {
+                            processSelectedFile(file)
+                        }}
+                        onClose={() => setGuidanceDialogOpen(false)}
+                    />
+                )}
+            </AnimatePresence>
 
             <AnimatePresence>
                 {dialogOpen && pendingImage && (
