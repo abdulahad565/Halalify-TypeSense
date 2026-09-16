@@ -413,6 +413,61 @@ def canonicalize_args(tool_args: dict) -> dict:
 #     print(canonicalize_args(example))
 
 
+# ---------------------------------------------------------------------------
+# Bare identifier numbers
+# ---------------------------------------------------------------------------
+# A number alone doesn't say which field it belongs to: in our catalogue barcodes
+# and fda_numbers are BOTH usually 13 digits, and cert_numbers overlap as well.
+# Searching the wrong field finds nothing, so these helpers let search_node ask
+# the user which kind it is (the prompt asks too; this is the deterministic
+# backstop, and it's the only place a barcode's check digit can actually be
+# verified).
+IDENTIFIER_FIELDS = ("barcodes", "fda_numbers", "cert_numbers")
+
+# Valid GTIN lengths: EAN-8, UPC-A, EAN-13, GTIN-14. 98% of the barcodes in the
+# catalogue have one of these lengths, and 97% also pass the check digit.
+GTIN_LENGTHS = (8, 12, 13, 14)
+
+
+def digits_only(value) -> str:
+    """Strip spaces, hyphens and other separators — barcodes are printed as
+    '8 850358 012314' and typed as '8850358012314'."""
+    return "".join(c for c in str(value) if c.isdigit())
+
+
+def is_valid_barcode(value) -> bool:
+    """True if the value is a well-formed GTIN (right length AND right check
+    digit). The last digit is a checksum over the others, so a mistyped barcode
+    almost always fails this — which is why we can tell the user before searching."""
+    raw = str(value).strip()
+    if any(c.isalpha() for c in raw):
+        return False
+    s = digits_only(raw)
+    if len(s) not in GTIN_LENGTHS:
+        return False
+    body, check = s[:-1][::-1], int(s[-1])
+    total = sum(int(d) * (3 if i % 2 == 0 else 1) for i, d in enumerate(body))
+    return (10 - total % 10) % 10 == check
+
+
+def is_bare_number(text: str) -> bool:
+    """True if the user's message is just a number, with no word saying what it is
+    ('03092488324', '  8859077800080 '). 'barcode 123' is NOT bare."""
+    return bool(text) and bool(digits_only(text)) and not any(c.isalpha() for c in str(text))
+
+
+def identifier_only_args(keyword_args: Optional[dict], filter_args: Optional[dict]) -> dict:
+    """The identifier filters of a call that carries NOTHING else (no product
+    name, no brand, no other filter); empty dict otherwise."""
+    kw = dict(keyword_args or {})
+    if kw.get("norm_name") or kw.get("companies"):
+        return {}
+    active = {k: v for k, v in dict(filter_args or {}).items() if v}
+    if not active or any(k not in IDENTIFIER_FIELDS for k in active):
+        return {}
+    return active
+
+
 def build_search_prompt(tool_names: list[str], allow_direct: bool = False) -> str:
     """Assemble the search-node system prompt for exactly the tools bound on this call.
 
@@ -422,6 +477,7 @@ def build_search_prompt(tool_names: list[str], allow_direct: bool = False) -> st
     from ..prompts.prompt import (
         SEARCH_PROMPT_BASE, SEARCH_ROUTING_RULES,
         INSTR_KEYWORD_NAME, INSTR_KEYWORD_SEMANTIC_BOUNDARY, INSTR_KEYWORD_FILTERS_ONLY,
+        INSTR_IDENTIFIER_CLARIFY,
         INSTR_SEMANTIC, INSTR_KEYWORD_WEB, INSTR_INTENT_SCOPE, INSTR_NO_INFER,
         INSTR_NORMALIZATION, INSTR_SECURITY,
         PRODUCT_SCHEMA_HEADER, PRODUCT_SCHEMA_KEYWORD, PRODUCT_SCHEMA_FILTERS,
@@ -454,6 +510,10 @@ def build_search_prompt(tool_names: list[str], allow_direct: bool = False) -> st
         instr.append(INSTR_SEMANTIC)
     if WEB in names:
         instr.append(INSTR_KEYWORD_WEB)
+    if KEYWORD in names and allow_direct:
+        # Only on the first call: the model may still reply directly there, which is
+        # what asking "barcode, FDA or cert number?" requires.
+        instr.append(INSTR_IDENTIFIER_CLARIFY)
     if allow_direct:
         instr.append(INSTR_INTENT_SCOPE)
     instr.append(INSTR_NO_INFER)

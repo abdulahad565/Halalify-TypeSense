@@ -103,6 +103,26 @@ arguments.
   [OK] Two users asking the same new question at the same moment
        Both miss, both save the same result (last write wins). Harmless.
 
+  [OK] A bare number is asked about, not guessed
+       "03092488324" on its own is NOT searched as a barcode. search_node replies
+       with a question: is it a barcode, an FDA number, or a certificate number?
+       (In our data barcodes and FDA numbers are both usually 13 digits.) A value
+       sent as a barcode that isn't a valid one (wrong length or a failing check
+       digit) gets the same question plus a "check the number" note. Once the user
+       answers, the search runs normally and can be cached.
+       A malformed barcode WITH a product ("nestle kitkat barcode 03092488324")
+       gets: "doesn't look like a standard barcode - search Nestle KitKat without
+       it?". Each number is asked about once; "search anyway" always proceeds.
+       Log: identifier.clarify_asked
+
+  [OK] Web results never "exactly match" a barcode/FDA/cert number they don't show
+       Web pages rarely list barcodes. A web product that doesn't carry the
+       identifier the user gave is shown under SIMILAR products (not Exact
+       Matches), with "I couldn't confirm barcode `X` on these results.". A web
+       product listing a DIFFERENT value is dropped. Other filters (country,
+       category) are unchanged. Web results are still never cached.
+       Log: judge.web_unverified_identifiers
+
   [OK] Identifier-only questions use the saved PRODUCT CARDS
        If the search has ONLY barcodes / fda_numbers / cert_numbers (no product
        name, no brand, no other filter), for example "barcode: 21515", the

@@ -30,6 +30,11 @@ class SearchAgentState(TypedDict):
     cache_hit: bool                  # True when the products were served from the cache
     cache_shadow: Optional[dict]     # shadow mode: the entry that WOULD have been served, for comparison
 
+    # identifiers (barcode/FDA/cert) the user gave that some shown web products could
+    # NOT be checked against — those products are demoted to relevant, and the
+    # response says so
+    unverified_identifiers: Optional[dict]
+
 # classify intent schema
 # The property name must stay in sync with CLASSIFICATION_PROMPT (which tells the model
 # to emit `classification`) and with classify_intent in nodes/node.py (which reads it).
