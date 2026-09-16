@@ -24,6 +24,12 @@ class SearchAgentState(TypedDict):
     matched: List[dict]              # exact matches / variants (magnified in the UI)
     relevant: List[dict]             # similar-but-not-exact (diminished in the UI)
 
+    # --- global query cache (see query_cache.py) ---
+    cache_enabled: bool              # caller allows caching this turn (False for image-derived prompts)
+    cache_key: Optional[str]         # key built from the first KeywordFilterSearch call; None = not cacheable
+    cache_hit: bool                  # True when the products were served from the cache
+    cache_shadow: Optional[dict]     # shadow mode: the entry that WOULD have been served, for comparison
+
 # classify intent schema
 # The property name must stay in sync with CLASSIFICATION_PROMPT (which tells the model
 # to emit `classification`) and with classify_intent in nodes/node.py (which reads it).

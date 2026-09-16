@@ -1,6 +1,7 @@
 import json
 import uuid
 import groq
+import query_cache
 from typing import Literal
 from log.logger import log
 from pydantic import ValidationError
@@ -142,11 +143,91 @@ def search_node(state: SearchAgentState) -> dict:
     return update
 
 
-def should_continue(state: SearchAgentState) -> Literal["tool_node", "response_node"]:
+def should_continue(state: SearchAgentState) -> Literal["cache_node", "tool_node", "response_node"]:
     """Run the pending tool call, or (safety only, since the call is forced) go
-    straight to the response."""
+    straight to the response. The FIRST call of a turn goes through cache_node,
+    which either serves it from the cache or passes it on to tool_node; retry
+    loops are never cached, so they go straight to tool_node."""
     last_message = state["messages"][-1]
-    return "tool_node" if getattr(last_message, "tool_calls", None) else "response_node"
+    if not getattr(last_message, "tool_calls", None):
+        return "response_node"
+    return "tool_node" if state.get("tools_called") else "cache_node"
+
+
+def cache_node(state: SearchAgentState) -> Command[Literal["tool_node", "response_node"]]:
+    """Global query cache in front of the first search call.
+
+    Only keyword-first searches are keyed (on the LLM's resolved args, so any
+    wording of the same product — and context-dependent follow-ups — land on the
+    same key). Semantic query text varies with phrasing, so it isn't cached.
+
+    Hit  → emit the cached products the same way tool_node would, author the
+           ToolMessage the tool-call protocol expects, and jump to response_node
+           (skips Typesense and the judge LLM).
+    Miss → record the key so response_node can save the result, run the tool.
+    Shadow mode never serves: it stashes the would-be hit for comparison.
+    """
+    miss = Command(goto="tool_node")
+    if not state.get("cache_enabled"):
+        return miss
+
+    tool_calls = state["messages"][-1].tool_calls
+    call = tool_calls[0]
+    if len(tool_calls) != 1 or call["name"] != KeywordFilterSearch.name:
+        log.info("qcache.skip", reason="not_keyword_search", tool=call["name"])
+        return miss
+
+    key = query_cache.build_key(call["args"].get("keyword_args"), call["args"].get("filter_args"))
+    if key is None:
+        log.info("qcache.skip", reason="no_key")
+        return miss
+
+    cached = query_cache.get(key)
+    source = "key"
+    if cached is None:
+        # Identifier-only question ("barcode: 21515"): no exact entry, but the
+        # product card may already be cached from a different question.
+        identifiers = query_cache.identifier_only_query(
+            call["args"].get("keyword_args"), call["args"].get("filter_args")
+        )
+        cards = query_cache.find_by_identifiers(identifiers) if identifiers else None
+        if cards:
+            cached = {"matched": cards[:10], "relevant": []}
+            source = "identifier"
+    if cached is None:
+        log.info("qcache.miss", key=key)
+        return Command(update={"cache_key": key}, goto="tool_node")
+
+    if query_cache.SHADOW:
+        log.info("qcache.shadow_hit", key=key, source=source)
+        return Command(update={"cache_key": key, "cache_shadow": cached}, goto="tool_node")
+
+    matched = cached.get("matched") or []
+    relevant = cached.get("relevant") or []
+    log.info("qcache.hit", key=key, source=source, matched=len(matched), relevant=len(relevant))
+
+    # Same stream event tool_node emits, so the UI renders a hit like a fresh search.
+    products = matched + relevant
+    if products:
+        get_stream_writer()({"search_results": products, "tool": call["name"]})
+
+    summary = (
+        f"{call['name']}: found {len(matched)} matching product(s)."
+        if matched else
+        f"{call['name']}: no products matched."
+    )
+    return Command(
+        update={
+            "messages": [ToolMessage(content=summary, tool_call_id=call["id"])],
+            "tools_called": [call["name"]],
+            "first_tool": call["name"],
+            "matched": matched,
+            "relevant": relevant,
+            "cache_key": key,
+            "cache_hit": True,
+        },
+        goto="response_node",
+    )
 
 
 def tool_node(state: SearchAgentState) -> dict:
@@ -455,7 +536,40 @@ def response_node(state: SearchAgentState) -> dict:
         "relevant": relevant_out,
         "match_label": match_label,
     }
+    _save_to_cache(state, final["matched"], final["relevant"])
     return {"messages": [AIMessage(content=json.dumps(final))]}
+
+
+def _save_to_cache(state: SearchAgentState, matched: list, relevant: list) -> None:
+    """Store a freshly computed search result under the key cache_node recorded.
+
+    Skipped when: the turn wasn't keyed (cache_key unset), it was served from the
+    cache (don't refresh the TTL off itself), WebSearch ran (unverified, and the
+    ladder only reaches web once the DB had no match), or nothing was found —
+    with the ladder a DB miss always escalates to WebSearch, so an empty result
+    without web means the model declined to search, which isn't a real answer.
+    """
+    key = state.get("cache_key")
+    if not key or state.get("cache_hit"):
+        return
+
+    shadow = state.get("cache_shadow")
+    if shadow is not None:
+        # Would serving the cached entry have shown the user the same products?
+        log.info(
+            "qcache.shadow_compare",
+            key=key,
+            matched_agree=query_cache.ids(shadow.get("matched")) == query_cache.ids(matched),
+            relevant_agree=query_cache.ids(shadow.get("relevant")) == query_cache.ids(relevant),
+        )
+
+    if WebSearch.name in (state.get("tools_called") or []):
+        log.info("qcache.skip_save", key=key, reason="web_search_ran")
+        return
+    if not matched and not relevant:
+        log.info("qcache.skip_save", key=key, reason="no_products")
+        return
+    query_cache.put(key, matched, relevant)
 
 
 def default_error_handler(state: SearchAgentState, error: NodeError):
