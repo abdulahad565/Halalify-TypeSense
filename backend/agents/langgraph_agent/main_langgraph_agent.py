@@ -16,7 +16,7 @@ from .prompts.prompt import SUMMARIZE_CONVERSATION_PROMPT
 from langchain_core.messages.utils import count_tokens_approximately
 from langchain.messages import HumanMessage, AIMessage, SystemMessage
 from .nodes.node import (
-    search_node, tool_node, judge_node, orchestration_node,
+    search_node, cache_node, tool_node, judge_node, orchestration_node,
     response_node, should_continue, default_error_handler,
 )
 
@@ -68,6 +68,7 @@ workflow.set_node_defaults(
 )
 
 workflow.add_node("search_node", search_node)
+workflow.add_node("cache_node", cache_node)
 workflow.add_node("tool_node", tool_node)
 workflow.add_node("judge_node", judge_node)
 workflow.add_node("orchestration_node", orchestration_node)
@@ -76,12 +77,13 @@ workflow.add_edge(START, "search_node")
 workflow.add_conditional_edges(
     "search_node",
     should_continue,
-    ["tool_node", "response_node"]
+    ["cache_node", "tool_node", "response_node"]
 )
 
 # tool -> judge -> (response on match | orchestration on no match) -> (loop to
-# search | response on budget exhausted). judge_node and orchestration_node route
-# with Command, so no static edges out of them (same pattern as classify_intent).
+# search | response on budget exhausted). cache_node (first call only: tool on a
+# miss, response on a hit), judge_node and orchestration_node route with Command,
+# so no static edges out of them (same pattern as classify_intent).
 workflow.add_edge("tool_node", "judge_node")
 workflow.add_edge("response_node", END)
 
@@ -99,7 +101,7 @@ search_agent = workflow.compile()
 # print("Saved as agent_flowchart.png")
 
 
-def _initial_state(query: str, messages: list) -> dict:
+def _initial_state(query: str, messages: list, use_cache: bool = True) -> dict:
     """Fresh graph state for one run. Lists/None defaults keep the reducers and the
     node `state.get(...)` calls happy from the very first step."""
     return {
@@ -115,6 +117,10 @@ def _initial_state(query: str, messages: list) -> dict:
         "current_pool": [],
         "matched": [],
         "relevant": [],
+        "cache_enabled": use_cache,
+        "cache_key": None,
+        "cache_hit": False,
+        "cache_shadow": None,
     }
 
 
@@ -286,7 +292,7 @@ async def compact_session(session_id: str, keep_token_budget: int = DEFAULT_KEEP
     )
     return new_summary, kept, True
 
-async def stream_agent(query: str, conversation_history: list):
+async def stream_agent(query: str, conversation_history: list, use_cache: bool = True):
     if not query:
         # Carries "type" like every other event this generator yields, so a client
         # routing on event["type"] handles the validation case with the same branch it
@@ -298,7 +304,7 @@ async def stream_agent(query: str, conversation_history: list):
     
     async with aclosing(
         search_agent.astream(
-            _initial_state(query, conversation_history),
+            _initial_state(query, conversation_history, use_cache),
             stream_mode=["messages", "custom", "updates"],
             version="v2",
         )
