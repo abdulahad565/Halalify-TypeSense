@@ -618,7 +618,11 @@ export default function Page() {
                         onInput={handleInputChange}
                         onPaste={handlePaste}
                         onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (canSend) handleSend() } }}
-                        style={{ maxHeight: 120, overflowY: "auto", outline: "none", fontFamily: "var(--font)", fontSize: 15, color: "var(--green-900)", padding: "6px 0", lineHeight: 1.5 }}
+                        // minHeight reserves one line + the 6px*2 padding so the box
+                        // doesn't collapse (and shove the placeholder down) when
+                        // disabled/empty on disconnect. With box-sizing:border-box the
+                        // padding must be included, or the box stays ~12px short.
+                        style={{ minHeight: "calc(1.5em + 12px)", maxHeight: 120, overflowY: "auto", outline: "none", fontFamily: "var(--font)", fontSize: 15, color: "var(--green-900)", padding: "6px 0", lineHeight: 1.5 }}
                         className="cscroll"
                     />
                 </div>
