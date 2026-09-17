@@ -29,28 +29,24 @@ const useWebsocket = (url: string): UseWebSocketReturn => {
     const reconnectAttemptRef = useRef(0)
     const totalReconnectAttempts = useRef(0)
 
-    // Authenticated URL built once the Supabase session is resolved.
-    const authedUrlRef = useRef<string | null>(null)
-    const [authedUrl, setAuthedUrl] = useState<string | null>(null)
-
-    // Fetch the access token and append it as ?token=... before connecting.
     useEffect(() => {
         const supabase = createClient()
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            const token = session?.access_token ?? ""
-            authedUrlRef.current = `${url}?token=${token}`
-            setAuthedUrl(authedUrlRef.current)
-        })
-    }, [url])
-
-    useEffect(() => {
-        if (!authedUrl) return
 
         let reconnectTimeout: NodeJS.Timeout | undefined
         let stableTimeout: NodeJS.Timeout | undefined
         // Scoped to this effect instance. Set on cleanup (unmount / URL change)
         // so an intentional close doesn't count as a failure or trigger a reconnect.
         let cancelled = false
+
+        // Pull the CURRENT access token every time we (re)connect. Supabase refreshes
+        // it in the background, so re-reading getSession() here means a reconnect after
+        // a drop uses a fresh token instead of the one captured at mount (which may
+        // have expired) — otherwise every recovery would fail auth and force a reload.
+        const buildAuthedUrl = async (): Promise<string> => {
+            const { data: { session } } = await supabase.auth.getSession()
+            const token = session?.access_token ?? ""
+            return `${url}?token=${token}`
+        }
 
         const scheduleReconnect = () => {
             if (cancelled) return
@@ -75,7 +71,7 @@ const useWebsocket = (url: string): UseWebSocketReturn => {
             }, delay)
         }
 
-        const connect = () => {
+        const connect = async () => {
             if (cancelled) return
             if (reconnectAttemptRef.current >= RECONNECT_DELAYS_MS.length || totalReconnectAttempts.current > MAX_TOTAL_RECONNECTS) {
                 setIsConnected(false)
@@ -83,9 +79,23 @@ const useWebsocket = (url: string): UseWebSocketReturn => {
                 return
             }
 
+            let authedUrl: string
+            try {
+                authedUrl = await buildAuthedUrl()
+            } catch (err) {
+                // Couldn't read the session (offline / Supabase unavailable). Treat it
+                // like any other failed attempt so the backoff schedule still applies.
+                console.error("Failed to fetch auth session:", err)
+                setIsConnected(false)
+                scheduleReconnect()
+                return
+            }
+            // The await above yields to the event loop; bail if we were torn down since.
+            if (cancelled) return
+
             let ws: WebSocket
             try {
-                ws = new WebSocket(authedUrlRef.current!)
+                ws = new WebSocket(authedUrl)
             } catch (err) {
                 // e.g. malformed URL (NEXT_PUBLIC_BACKEND_WS_URL unset). Don't let
                 // the throw re-run the effect into a tight loop.
@@ -134,7 +144,7 @@ const useWebsocket = (url: string): UseWebSocketReturn => {
             clearTimeout(stableTimeout)
             wsRef.current?.close()
         }
-    }, [authedUrl])
+    }, [url])
 
     // Stable identity so consumers can safely list it in effect deps.
     const sendMessage = useCallback((message: string) => {

@@ -34,7 +34,7 @@ from rate_limit import (
 )
 from langchain.messages import HumanMessage, AIMessage, SystemMessage
 from langchain_core.messages.utils import count_tokens_approximately
-
+from barcode_lookup import normalize_barcode, query_primary_db, project_product
 load_dotenv(override=True)
 
 # Base token count that triggers a compaction prompt (~30% of the model context).
@@ -494,6 +494,83 @@ async def extract_image_endpoint(req: ExtractImageRequest, authorization: str = 
             raise HTTPException(status_code=422, detail=result["error"])
         return {"fields": result}
 
+
+class BarcodeLookupRequest(PydanticBaseModel):
+    barcode: str
+
+@app.post("/api/v1/barcode/lookup")
+async def barcode_lookup_endpoint(
+    req: BarcodeLookupRequest, authorization: str = Header(default="")
+):
+    async with logged_process("http.barcode_lookup"):
+        token = authorization.removeprefix("Bearer ").strip()
+        try:
+            client = await get_supabase()
+            user_response = await client.auth.get_user(token)
+            if not user_response.user:
+                raise HTTPException(status_code=401, detail="Unauthorized")
+            user_id = user_response.user.id
+        except HTTPException:
+            raise
+        except Exception as e:
+            log.warning(
+                "http.barcode_lookup.auth_failed",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        bind_contextvars(user_id=user_id)
+
+        if not await allow_user(user_id, "barcode-lookup"):
+            log.warning(
+                "ratelimit.rejected", kind="user_req_rate", action="http.barcode_lookup"
+            )
+            raise HTTPException(
+                status_code=429, detail="Too many requests, please slow down"
+            )
+
+        normalized = normalize_barcode(req.barcode)
+        if normalized is None:
+            return {
+                "state": "invalid_barcode",
+                "source": None,
+                "message": "That doesn't look like a valid barcode. Please scan or enter a valid one.",
+                "barcode": req.barcode,
+                "product": None,
+            }
+
+        try:
+            doc = await asyncio.to_thread(query_primary_db, normalized)
+        except Exception as e:
+            log.error(
+                "http.barcode_lookup.db_failed",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            return {
+                "state": "error",
+                "source": None,
+                "message": "Something went wrong. Please try again.",
+                "barcode": normalized,
+                "product": None,
+            }
+
+        if doc is None:
+            return {
+                "state": "not_found",
+                "source": None,
+                "message": "We couldn't find a product for this barcode.",
+                "barcode": normalized,
+                "product": None,
+            }
+
+        return {
+            "state": "found",
+            "source": "primary_db",
+            "message": "Product found.",
+            "barcode": normalized,
+            "product": project_product(doc),
+        }
 
 @app.websocket("/ws")
 async def websocket_endpoint(
