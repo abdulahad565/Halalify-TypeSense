@@ -413,59 +413,27 @@ def canonicalize_args(tool_args: dict) -> dict:
 #     print(canonicalize_args(example))
 
 
-# ---------------------------------------------------------------------------
-# Bare identifier numbers
-# ---------------------------------------------------------------------------
-# A number alone doesn't say which field it belongs to: in our catalogue barcodes
-# and fda_numbers are BOTH usually 13 digits, and cert_numbers overlap as well.
-# Searching the wrong field finds nothing, so these helpers let search_node ask
-# the user which kind it is (the prompt asks too; this is the deterministic
-# backstop, and it's the only place a barcode's check digit can actually be
-# verified).
-IDENTIFIER_FIELDS = ("barcodes", "fda_numbers", "cert_numbers")
-
-# Valid GTIN lengths: EAN-8, UPC-A, EAN-13, GTIN-14. 98% of the barcodes in the
-# catalogue have one of these lengths, and 97% also pass the check digit.
-GTIN_LENGTHS = (8, 12, 13, 14)
-
-
-def digits_only(value) -> str:
-    """Strip spaces, hyphens and other separators — barcodes are printed as
-    '8 850358 012314' and typed as '8850358012314'."""
-    return "".join(c for c in str(value) if c.isdigit())
-
-
 def is_valid_barcode(value) -> bool:
-    """True if the value is a well-formed GTIN (right length AND right check
-    digit). The last digit is a checksum over the others, so a mistyped barcode
-    almost always fails this — which is why we can tell the user before searching."""
-    raw = str(value).strip()
-    if any(c.isalpha() for c in raw):
-        return False
-    s = digits_only(raw)
-    if len(s) not in GTIN_LENGTHS:
-        return False
-    body, check = s[:-1][::-1], int(s[-1])
-    total = sum(int(d) * (3 if i % 2 == 0 else 1) for i, d in enumerate(body))
-    return (10 - total % 10) % 10 == check
+    """A barcode just has to contain a digit. Anything stricter (GTIN length or check
+    digit) rejects real barcodes in the catalogue, e.g. 'D02001', '03001', '00000'."""
+    return any(c.isdigit() for c in str(value))
 
 
-def is_bare_number(text: str) -> bool:
-    """True if the user's message is just a number, with no word saying what it is
-    ('03092488324', '  8859077800080 '). 'barcode 123' is NOT bare."""
-    return bool(text) and bool(digits_only(text)) and not any(c.isalpha() for c in str(text))
-
-
-def identifier_only_args(keyword_args: Optional[dict], filter_args: Optional[dict]) -> dict:
-    """The identifier filters of a call that carries NOTHING else (no product
-    name, no brand, no other filter); empty dict otherwise."""
-    kw = dict(keyword_args or {})
-    if kw.get("norm_name") or kw.get("companies"):
-        return {}
-    active = {k: v for k, v in dict(filter_args or {}).items() if v}
-    if not active or any(k not in IDENTIFIER_FIELDS for k in active):
-        return {}
-    return active
+def invalid_barcode_message(filter_args) -> Optional[str]:
+    """The reply to send instead of searching when a tool call carries a value that
+    isn't a barcode at all, or None when every barcode is usable."""
+    barcodes = dict(filter_args or {}).get("barcodes") or []
+    if isinstance(barcodes, str):
+        barcodes = [barcodes]
+    bad = [str(b) for b in barcodes if not is_valid_barcode(b)]
+    if not bad:
+        return None
+    values = ", ".join(f"`{b}`" for b in bad)
+    return (
+        f"{values} doesn't look like a barcode — a barcode is the number printed under the "
+        "bars on the pack.\n\n"
+        "Please send that number, or tell me the product name and I'll search for it that way."
+    )
 
 
 def build_image_url(base64: str, mime_type: str) -> list:

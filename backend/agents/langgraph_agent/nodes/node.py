@@ -14,12 +14,7 @@ from langchain.messages import SystemMessage, HumanMessage, ToolMessage, AIMessa
 from ..models.models import SearchAgentState, OutputSchema, JudgeVerdict
 from ..LLMs.llm import standard_llm, judge_llm
 from ..prompts.prompt import (
-    IDENTIFIER_CLARIFY_MARKER,
-    IDENTIFIER_CLARIFY_MSG,
     IDENTIFIER_LABELS,
-    INVALID_BARCODE_MARKER,
-    INVALID_BARCODE_NOTE,
-    INVALID_BARCODE_WITH_PRODUCT_MSG,
     UNVERIFIED_IDENTIFIER_NOTE,
     JUDGE_PROMPT,
     NO_EXACT_SIMILAR_MSG,
@@ -31,10 +26,7 @@ from ..utils.utils import (
     KEYWORD_FIELDS,
     WEB_FILTER_FIELDS,
     build_search_prompt,
-    digits_only,
-    identifier_only_args,
-    is_bare_number,
-    is_valid_barcode,
+    invalid_barcode_message,
     select_tools,
     should_loop,
     validate_ids,
@@ -42,7 +34,6 @@ from ..utils.utils import (
     dedup_by_id,
     _compact_for_judge,
 )
-
 
 TOOLS_BY_NAME = {
     t.name: t for t in [KeywordFilterSearch, SemanticFilterSearch, WebSearch]
@@ -114,67 +105,6 @@ def _as_list(value) -> list:
     return value if isinstance(value, list) else ([value] if value else [])
 
 
-def _already_asked_identifier(messages: list, value: str) -> bool:
-    """True if we already asked about THIS number in the conversation, so the user's
-    answer ("it's a barcode", "search anyway") runs the search instead of being asked
-    again. Scoped to the value: a different bad number later is still questioned."""
-    wanted = digits_only(value)
-    for m in messages:
-        if getattr(m, "type", None) != "ai":
-            continue
-        content = str(getattr(m, "content", "") or "")
-        asked = IDENTIFIER_CLARIFY_MARKER in content or INVALID_BARCODE_MARKER in content
-        if asked and wanted and wanted in digits_only(content):
-            return True
-    return False
-
-
-def _identifier_clarification(state: SearchAgentState, call: dict) -> str | None:
-    """The question to ask instead of searching, or None to let the search run.
-
-    - Nothing but identifiers, and the user's message was a bare number: which field
-      it belongs to is a guess (barcodes and FDA numbers are both usually 13 digits
-      here) → ask which kind it is.
-    - A barcode that isn't well-formed (wrong length or failing check digit), with or
-      without a product name → it's almost certainly mistyped. On its own: ask which
-      kind + "check the number". With a product/brand: offer to search without it,
-      because searching with it can only return nothing — or, via the web fallback,
-      a product that was never checked against that barcode.
-    Asked once per number: the user can always answer "search anyway".
-    """
-    args = call["args"]
-    keyword_args = args.get("keyword_args") or {}
-    filter_args = args.get("filter_args") or {}
-    identifiers = identifier_only_args(keyword_args, filter_args)
-    bad_barcodes = [str(b) for b in _as_list(dict(filter_args).get("barcodes")) if not is_valid_barcode(b)]
-    bare = bool(identifiers) and is_bare_number(state.get("user_prompt") or "")
-
-    if not bare and not bad_barcodes:
-        return None
-
-    if identifiers:
-        values = [str(v) for vals in identifiers.values() for v in _as_list(vals)]
-        value = bad_barcodes[0] if bad_barcodes else values[0]
-        if _already_asked_identifier(state["messages"], value):
-            return None
-        msg = IDENTIFIER_CLARIFY_MSG.format(value=value)
-        if bad_barcodes:
-            msg += "\n\n" + INVALID_BARCODE_NOTE.format(value=value)
-    else:
-        value = bad_barcodes[0]
-        if _already_asked_identifier(state["messages"], value):
-            return None
-        kw = dict(keyword_args)
-        product = " ".join(
-            [*(str(c) for c in _as_list(kw.get("companies"))), str(kw.get("norm_name") or "")]
-        ).strip() or "the product"
-        msg = INVALID_BARCODE_WITH_PRODUCT_MSG.format(value=value, product=product)
-
-    log.info("identifier.clarify_asked", value=value, bare=bare, bad_barcode=bool(bad_barcodes),
-             identifier_only=bool(identifiers))
-    return msg
-
-
 def search_node(state: SearchAgentState) -> dict:
     """Issue one search tool call, or (first call only) reply directly.
 
@@ -210,13 +140,13 @@ def search_node(state: SearchAgentState) -> dict:
             return {"messages": [AIMessage(content="")]}
         raise
     tool_calls = getattr(result, "tool_calls", None)
-    # A turn that comes down to a bare number (or a malformed barcode) is ambiguous:
-    # ask which field it belongs to instead of searching one at random. Only on the
-    # first call, where replying directly is still allowed.
-    if is_first and tool_calls and len(tool_calls) == 1 and tool_calls[0]["name"] == KeywordFilterSearch.name:
-        question = _identifier_clarification(state, tool_calls[0])
-        if question:
-            return {"messages": [AIMessage(content=question)], "classification": "direct"}
+    # A malformed barcode can only return nothing, so reply instead of searching.
+    for call in tool_calls or []:
+        if call["name"] in (KeywordFilterSearch.name, SemanticFilterSearch.name):
+            message = invalid_barcode_message((call.get("args") or {}).get("filter_args"))
+            if message:
+                log.info("barcode.invalid", args=call.get("args"))
+                return {"messages": [AIMessage(content=message)], "classification": "direct"}
 
     update = {"messages": [result]}
     # Only the first (unforced) call decides the route: a tool call means search,
@@ -226,7 +156,9 @@ def search_node(state: SearchAgentState) -> dict:
     return update
 
 
-def should_continue(state: SearchAgentState) -> Literal["cache_node", "tool_node", "response_node"]:
+def should_continue(
+    state: SearchAgentState,
+) -> Literal["cache_node", "tool_node", "response_node"]:
     """Run the pending tool call, or (safety only, since the call is forced) go
     straight to the response. The FIRST call of a turn goes through cache_node,
     which either serves it from the cache or passes it on to tool_node; retry
@@ -237,7 +169,9 @@ def should_continue(state: SearchAgentState) -> Literal["cache_node", "tool_node
     return "tool_node" if state.get("tools_called") else "cache_node"
 
 
-def cache_node(state: SearchAgentState) -> Command[Literal["tool_node", "response_node"]]:
+def cache_node(
+    state: SearchAgentState,
+) -> Command[Literal["tool_node", "response_node"]]:
     """Global query cache in front of the first search call.
 
     Only keyword-first searches are keyed (on the LLM's resolved args, so any
@@ -260,7 +194,9 @@ def cache_node(state: SearchAgentState) -> Command[Literal["tool_node", "respons
         log.info("qcache.skip", reason="not_keyword_search", tool=call["name"])
         return miss
 
-    key = query_cache.build_key(call["args"].get("keyword_args"), call["args"].get("filter_args"))
+    key = query_cache.build_key(
+        call["args"].get("keyword_args"), call["args"].get("filter_args")
+    )
     if key is None:
         log.info("qcache.skip", reason="no_key")
         return miss
@@ -283,11 +219,19 @@ def cache_node(state: SearchAgentState) -> Command[Literal["tool_node", "respons
 
     if query_cache.SHADOW:
         log.info("qcache.shadow_hit", key=key, source=source)
-        return Command(update={"cache_key": key, "cache_shadow": cached}, goto="tool_node")
+        return Command(
+            update={"cache_key": key, "cache_shadow": cached}, goto="tool_node"
+        )
 
     matched = cached.get("matched") or []
     relevant = cached.get("relevant") or []
-    log.info("qcache.hit", key=key, source=source, matched=len(matched), relevant=len(relevant))
+    log.info(
+        "qcache.hit",
+        key=key,
+        source=source,
+        matched=len(matched),
+        relevant=len(relevant),
+    )
 
     # Same stream event tool_node emits, so the UI renders a hit like a fresh search.
     products = matched + relevant
@@ -296,8 +240,8 @@ def cache_node(state: SearchAgentState) -> Command[Literal["tool_node", "respons
 
     summary = (
         f"{call['name']}: found {len(matched)} matching product(s)."
-        if matched else
-        f"{call['name']}: no products matched."
+        if matched
+        else f"{call['name']}: no products matched."
     )
     return Command(
         update={
@@ -365,7 +309,9 @@ def tool_node(state: SearchAgentState) -> dict:
             update["keyword_params"] = keyword_params
             update["filters"] = filters
         elif ran == SemanticFilterSearch.name:
-            update["keyword_params"] = {"companies": semantic_companies} if semantic_companies else None
+            update["keyword_params"] = (
+                {"companies": semantic_companies} if semantic_companies else None
+            )
             update["filters"] = filters
             update["semantic_query"] = semantic_query
     return update
@@ -444,7 +390,11 @@ def _judge_matches(keyword_params: dict, candidates: list) -> list:
 
 def _identifier_filters(filters: dict | None) -> dict:
     """The identifier filters (barcode / FDA / cert number) the user gave."""
-    return {k: _as_list(v) for k, v in (filters or {}).items() if k in WEB_FILTER_FIELDS and v}
+    return {
+        k: _as_list(v)
+        for k, v in (filters or {}).items()
+        if k in WEB_FILTER_FIELDS and v
+    }
 
 
 def _split_web_results(pool: list, filters: dict | None) -> tuple[list, list]:
@@ -468,8 +418,11 @@ def _split_web_results(pool: list, filters: dict | None) -> tuple[list, list]:
     strict_ids = {id(p) for p in strict}
     unverified = [p for p in lenient if id(p) not in strict_ids]
     if unverified:
-        log.info("judge.web_unverified_identifiers", count=len(unverified),
-                 fields=sorted(_identifier_filters(filters)))
+        log.info(
+            "judge.web_unverified_identifiers",
+            count=len(unverified),
+            fields=sorted(_identifier_filters(filters)),
+        )
     return strict, unverified
 
 
@@ -540,7 +493,9 @@ def judge_node(
     # web products do (they may well be the product — we just can't confirm it).
     relevant = dedup_by_id(prior_relevant + non_matched + unverified)
     unverified_update = (
-        {"unverified_identifiers": _identifier_filters(state.get("filters"))} if unverified else {}
+        {"unverified_identifiers": _identifier_filters(state.get("filters"))}
+        if unverified
+        else {}
     )
 
     # Author the ToolMessage here (not in tool_node) so it states the JUDGED
@@ -569,7 +524,12 @@ def judge_node(
             goto="response_node",
         )
     return Command(
-        update={"messages": tool_messages, "matched": [], "relevant": relevant, **unverified_update},
+        update={
+            "messages": tool_messages,
+            "matched": [],
+            "relevant": relevant,
+            **unverified_update,
+        },
         goto="orchestration_node",
     )
 
@@ -608,7 +568,11 @@ def _unverified_note(identifiers: dict | None) -> str:
         for field, values in (identifiers or {}).items()
         if values
     ]
-    return UNVERIFIED_IDENTIFIER_NOTE.format(identifiers=" or ".join(parts)) if parts else ""
+    return (
+        UNVERIFIED_IDENTIFIER_NOTE.format(identifiers=" or ".join(parts))
+        if parts
+        else ""
+    )
 
 
 def response_node(state: SearchAgentState) -> dict:
@@ -684,8 +648,10 @@ def _save_to_cache(state: SearchAgentState, matched: list, relevant: list) -> No
         log.info(
             "qcache.shadow_compare",
             key=key,
-            matched_agree=query_cache.ids(shadow.get("matched")) == query_cache.ids(matched),
-            relevant_agree=query_cache.ids(shadow.get("relevant")) == query_cache.ids(relevant),
+            matched_agree=query_cache.ids(shadow.get("matched"))
+            == query_cache.ids(matched),
+            relevant_agree=query_cache.ids(shadow.get("relevant"))
+            == query_cache.ids(relevant),
         )
 
     if WebSearch.name in (state.get("tools_called") or []):
