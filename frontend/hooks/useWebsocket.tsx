@@ -4,16 +4,26 @@ import { createClient } from "@/utils/supabase/client"
 
 interface UseWebSocketReturn {
     isConnected: boolean;
+    connectionFailed: boolean;
     lastMessage: string | null;
     messageCount: number;
     sendMessage: (message: string) => void;
 }
 
-const MAX_RECONNECT_TRIES = 5
+// Backoff waits between reconnect attempts, in ms. The delay doubles and touches
+// the 30s ceiling exactly ONCE; after the last entry we stop retrying and prompt a
+// refresh, rather than hammering the server at 30s over and over.
+const RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000, 16000, 30000]
+// A flapping server (accepts then instantly closes) resets the backoff index on
+// each brief open, so this hard ceiling stops it looping well past the schedule.
+const MAX_TOTAL_RECONNECTS = 12
 
 const useWebsocket = (url: string): UseWebSocketReturn => {
     const wsRef = useRef<WebSocket | null>(null)
     const [isConnected, setIsConnected] = useState(false)
+    // True only once every reconnect attempt has been exhausted — the UI uses this
+    // to switch from "trying to reconnect" to a "please refresh" prompt.
+    const [connectionFailed, setConnectionFailed] = useState(false)
     const [lastMessage, setLastMessage] = useState<string | null>(null)
     const [messageCount, setMessageCount] = useState<number>(0)
     const reconnectAttemptRef = useRef(0)
@@ -44,17 +54,20 @@ const useWebsocket = (url: string): UseWebSocketReturn => {
 
         const scheduleReconnect = () => {
             if (cancelled) return
-            // Count every failed attempt toward the cap. Because the cap is only
-            // reset after a *stable* connection (see onopen), a server that
-            // accepts-then-closes can't reconnect forever (which would flood
-            // setState and trip React's max-update-depth).
+            // totalReconnectAttempts only resets after a *stable* connection (see
+            // onopen), so it also guards against a flapping accept-then-close loop.
             totalReconnectAttempts.current += 1
-            if (totalReconnectAttempts.current >= MAX_RECONNECT_TRIES) {
+            const idx = reconnectAttemptRef.current
+            // Give up once the whole backoff schedule has been used (so the 30s step
+            // runs exactly once), or if flapping has forced far more attempts than
+            // the schedule length.
+            if (idx >= RECONNECT_DELAYS_MS.length || totalReconnectAttempts.current > MAX_TOTAL_RECONNECTS) {
                 console.log("Max reconnect attempts reached. Waiting for manual user action.")
+                setConnectionFailed(true)
                 return
             }
-            const delay = Math.min(1000 * Math.pow(2, reconnectAttemptRef.current), 30000)
-            console.log(`❌ Socket closed. Retrying in ${delay / 1000}s...`)
+            const delay = RECONNECT_DELAYS_MS[idx]
+            console.log(`Socket closed. Retrying in ${delay / 1000}s...`)
             reconnectTimeout = setTimeout(() => {
                 reconnectAttemptRef.current += 1
                 wsRef.current = null
@@ -64,8 +77,9 @@ const useWebsocket = (url: string): UseWebSocketReturn => {
 
         const connect = () => {
             if (cancelled) return
-            if (totalReconnectAttempts.current >= MAX_RECONNECT_TRIES) {
+            if (reconnectAttemptRef.current >= RECONNECT_DELAYS_MS.length || totalReconnectAttempts.current > MAX_TOTAL_RECONNECTS) {
                 setIsConnected(false)
+                setConnectionFailed(true)
                 return
             }
 
@@ -86,6 +100,7 @@ const useWebsocket = (url: string): UseWebSocketReturn => {
                 console.log("Websocket connected successfully!")
                 reconnectAttemptRef.current = 0
                 setIsConnected(true)
+                setConnectionFailed(false)
                 // Only clear the failure cap once the connection has stayed open
                 // a while — a flapping server shouldn't be able to reset it.
                 stableTimeout = setTimeout(() => { totalReconnectAttempts.current = 0 }, 5000)
@@ -128,7 +143,7 @@ const useWebsocket = (url: string): UseWebSocketReturn => {
         }
     }, [])
 
-    return { isConnected, messageCount, lastMessage, sendMessage }
+    return { isConnected, connectionFailed, messageCount, lastMessage, sendMessage }
 }
 
 export default useWebsocket

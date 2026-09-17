@@ -284,7 +284,7 @@ export default function Page() {
 
     // ---- one long-lived socket ----
     const ws = useWebsocket(`${process.env.NEXT_PUBLIC_BACKEND_WS_URL}/ws`)
-    const { isConnected, lastMessage, sendMessage, messageCount } = ws
+    const { isConnected, connectionFailed, lastMessage, sendMessage, messageCount } = ws
 
     // ---- session routing ----
     const params = useParams<{ slug?: string[] }>()
@@ -888,10 +888,12 @@ export default function Page() {
                     </Link>
                     <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
                         <AnimatePresence>
-                            {showDisconnected && (
+                            {(connectionFailed || showDisconnected) && (
                                 <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--danger)", color: "#fff", borderRadius: 999, padding: "7px 16px", fontSize: 12.5, fontWeight: 700, boxShadow: "var(--shadow-md)" }}>
-                                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#fff", animation: "hoc-pulse 1.1s ease-in-out infinite" }} />
-                                    Connection lost — trying to reconnect…
+                                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#fff", animation: connectionFailed ? "none" : "hoc-pulse 1.1s ease-in-out infinite" }} />
+                                    {connectionFailed
+                                        ? "Failed to establish connection with backend, please refresh your window."
+                                        : "Connection lost — trying to reconnect…"}
                                 </motion.div>
                             )}
                         </AnimatePresence>
