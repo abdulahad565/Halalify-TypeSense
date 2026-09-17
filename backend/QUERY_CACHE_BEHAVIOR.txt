@@ -1,0 +1,308 @@
+===============================================================================
+HALALIFY - GLOBAL QUERY CACHE: HOW IT BEHAVES
+===============================================================================
+Code:     backend/query_cache.py
+          backend/agents/langgraph_agent/nodes/node.py  (cache_node, _save_to_cache)
+Settings: backend/.env  ->  QCACHE_ENABLED, QCACHE_SHADOW, QCACHE_TTL_S
+
+
+-------------------------------------------------------------------------------
+1. THE IDEA IN ONE PARAGRAPH
+-------------------------------------------------------------------------------
+When a user asks about a product, the LLM turns the question into search
+arguments (product name, brand, filters). The cache key is built from those
+ARGUMENTS, not from the user's words. So different users who ask about the same
+product in different words get the same key, and everyone after the first
+user gets the saved answer from Valkey. A cache hit skips the Typesense search
+and the judge LLM. The only LLM call left is the one that extracts the
+arguments.
+
+
+-------------------------------------------------------------------------------
+2. STEP BY STEP
+-------------------------------------------------------------------------------
+  1. User sends a message.
+  2. search_node: the LLM either replies directly (chit-chat / clarifying
+     question) or makes a tool call such as
+        KeywordFilterSearch { norm_name: "KitKat", companies: ["Nestle"] }
+  3. Only on the FIRST tool call of the turn, cache_node runs:
+       a. Clean the arguments:
+            product name and brand -> lowercase, no accents, no punctuation,
+                                      hyphens and apostrophes removed
+                                      ("Kit-Kat" = "kitkat", "Nestlé" = "nestle")
+            brand list             -> sorted, duplicates removed
+            filters                -> trimmed and sorted, but case is KEPT
+                                      (Typesense filters are case-sensitive)
+       b. Build the key:  qcache:v<version>:kw:<hash of cleaned arguments>
+       c. Look up the key in Valkey.
+  4. HIT  -> the saved products go straight to response_node (fast).
+     MISS -> normal flow: tool_node -> judge_node -> ... -> response_node,
+             then the result is saved under the key.
+  5. What is saved: the products the user was shown (up to 10 matched and
+     10 relevant), for 14 days.
+
+  You can find every step in logs/app.log:
+     qcache.key        (shows the cleaned "canonical" arguments)
+     qcache.miss / qcache.hit / qcache.shadow_hit
+     qcache.saved / qcache.skip / qcache.skip_save (with a reason)
+     qcache.shadow_compare
+
+
+-------------------------------------------------------------------------------
+3. CASES THAT ARE COVERED  (work correctly today)
+-------------------------------------------------------------------------------
+  [OK] Same product, different wording
+       "Is Nestle KitKat halal?" / "kitkat by nestle, halal or not?"
+       -> same arguments -> same key -> hit
+
+  [OK] Different users and different chats
+       The cache is global and lives in the shared Valkey, so every backend
+       instance and every user shares it.
+
+  [OK] Follow-up questions
+       "and the dark chocolate one?" -> the LLM reads the chat history and
+       searches "kitkat dark" -> a DIFFERENT key, so it is never confused with
+       plain KitKat.
+
+  [OK] Case, accents, punctuation, hyphens in product and brand names
+       "KitKat" / "kitkat" / "Kit-Kat",  "Nestlé" / "NESTLE"
+
+  [OK] Brand order and duplicates
+       ["Nestle", "Maggi"] = ["Maggi", "Nestle"]
+
+  [OK] Filter order, list order, extra spaces
+       sold_in [" UK "] = ["UK"]
+
+  [OK] Filters are part of the key
+       "KitKat halal in UK" and "KitKat halal" are separate entries.
+
+  [OK] Clarifying questions
+       If the LLM asks "did you mean Ben & Jerry's?", nothing is cached for
+       that reply. After the user answers "yes", the real search is cached.
+
+  [OK] Chit-chat is never cached (no tool call = cache never runs).
+
+  [OK] Image questions are never cached, even when the turn is resumed after
+       a compaction prompt.
+
+  [OK] Web search answers are never saved (unverified data).
+
+  [OK] "Nothing found" is never saved.
+
+  [OK] Retry loops are never looked up (only the first tool call).
+
+  [OK] Product data changes
+       The insert scripts bump the cache version, which makes every old key
+       unreachable (old keys expire on their own). Manual bump:
+          python query_cache.py bump
+
+  [OK] Valkey down or slow
+       Fails open: max 0.5s wait, then the normal search runs. Users still
+       get answers.
+
+  [OK] Two users asking the same new question at the same moment
+       Both miss, both save the same result (last write wins). Harmless.
+
+  [OK] Identifier-only questions use the saved PRODUCT CARDS
+       If the search has ONLY barcodes / fda_numbers / cert_numbers (no product
+       name, no brand, no other filter), for example "barcode: 21515", the
+       cache also checks every product card saved by ANY earlier question.
+       Example: "is nestle kitkat halal?" saved the KitKat card. Later
+       "barcode 5000159461122" finds that card, even though nobody asked
+       that exact question before.
+       How: when cards are saved, each one is also indexed by its identifiers
+          qcache:v0:id:barcodes:5000159461122 -> { KitKat card }
+       so the lookup is instant instead of scanning every card.
+       Rules:
+         - identifiers ignore case, hyphens and spaces ("01-23 45" = "012345")
+         - several values of one field = ANY of them (2 barcodes -> both products)
+         - different fields = ALL of them (barcode AND fda number on one card)
+         - every value asked for must be known to the cache, otherwise it is
+           a miss and the normal DB search runs
+         - "barcode 21515 sold in UK" or "kitkat barcode 21515" is NOT
+           identifier-only, so it uses the normal key lookup
+       Log: qcache.hit source=identifier
+
+  [OK] Shadow mode (QCACHE_SHADOW=true)
+       Looks up and saves but never serves. It logs whether the cached answer
+       would have matched the fresh one (qcache.shadow_compare).
+
+
+-------------------------------------------------------------------------------
+4. CASES THAT ARE NOT COVERED  (cache misses when it ideally should hit)
+-------------------------------------------------------------------------------
+  These do NOT give wrong answers. They only cause extra misses, so they cost
+  speed and money, not correctness.
+
+  [MISS] Brand spelling variants            (seen in logs: Ben & Jerry's)
+         "Ben & Jerry's" -> "ben jerrys"
+         "Ben and Jerry's" -> "ben and jerrys"     -> 2 keys
+         Same issue: "Marks & Spencer" vs "Marks and Spencer",
+         "Nestle SA" vs "Nestle", "Jerry's" vs "Jerry".
+
+  [MISS] Typos that reach the search
+         "ban and jerry", "nesle"
+
+  [MISS] The LLM extracts different arguments for the same question
+         "kitkat" vs "nestle kitkat" (brand left inside the product name)
+         "kitkat" vs "kitkat chocolate" (extra word)
+         An extra filter the user never asked for (halal_status=Halal)
+         This happens more often in long chats, where history affects what
+         the LLM extracts.
+
+  [MISS] Synonyms and other names for the same thing   (seen in logs)
+         "e120" vs "e120 cochineal" vs "carmine"
+
+  [MISS] Word order and singular/plural in the product name
+         "biryani masala" vs "masala biryani",  "nugget" vs "nuggets"
+
+  [MISS] Filter value variants
+         "UK" vs "United Kingdom",  "Halal" vs "halal"
+         (kept separate on purpose; see decision 3 in section 5)
+
+  [NOT CACHED] Semantic / descriptive questions
+         "healthy calcium snack for kids". The search text changes with the
+         wording, so it would rarely hit. Skipped entirely.
+
+  [NOT CACHED] Products that are not in our database
+         These always end in web search, which is never saved, so the full
+         cost is paid every time.
+
+  [NOT CACHED] "Nothing found" answers
+
+  [NOT CACHED] More than one tool call in a single LLM message (rare).
+
+
+-------------------------------------------------------------------------------
+5. EDGE CASES AND OPEN DECISIONS
+-------------------------------------------------------------------------------
+  Each item: the problem, the options, and the current state.
+
+  1) Brand name variants (section 4, first item)
+     Options:
+       A. Stronger brand clean-up: "&" = "and", drop possessive 's, drop
+          suffixes like inc/ltd/co/sa. Small, no extra calls. Does not fix typos.
+       B. Replace the brand with the exact spelling stored in Typesense
+          (like canonicalize() already does for filters). Also fixes typos,
+          but adds one small DB query per question, and a wrong match could
+          share a wrong answer.
+     Current: neither. Recommended: A now, B later if logs still show variants.
+
+  2) A wrong answer is frozen and shared with everyone
+     The judge is an LLM and can make mistakes. If the FIRST user's result was
+     wrong, every user gets that wrong result for 14 days.
+     Options: keep shadow mode on longer and check shadow_compare; shorter TTL;
+     a small admin action to delete one key; save only after 2 fresh runs agree.
+     Current: nothing beyond shadow mode and manual "DEL <key>".
+
+  3) Filter values: exact vs relaxed
+     Filters keep their case because Typesense filters are case-sensitive
+     ("halal" may return nothing while "Halal" returns products). Relaxing
+     this would raise hits but could share an empty/wrong result.
+     Option: canonicalize filter values (canonicalize() in utils.py) BEFORE the
+     search runs, so the search and the key both use the clean value.
+     Current: exact.
+
+  4) A result from a retry is saved under the first call's key
+     If the first keyword search finds nothing and the LLM's second keyword
+     search (with reworded arguments) finds a match, that match is saved under
+     the FIRST call's key. Usually this is what we want. But the second call is
+     written by the LLM using that user's chat, so one user's conversation can
+     decide what everyone else gets for that key (accidental or deliberate
+     cache poisoning).
+     Options: save only when the match came from the first call; or also allow
+     the second call.
+     Current: allowed.
+
+  5) Should web search answers be cached?
+     Pro: products missing from the DB are the slowest and most expensive
+          questions, and they get repeated.
+     Con: unverified data shared with everyone.
+     Option: cache with a short TTL (e.g. 1 day) and keep verified=False.
+     Current: never cached.
+
+  6) Should "nothing found" be cached?
+     Today a DB miss always escalates to web search, so an empty result only
+     happens when the LLM declines to search, which is not a reliable answer.
+     Revisit if the search ladder changes.
+     Current: never cached.
+
+  7) Stale product data inside the 14 days
+     The cache stores full product data (not just IDs). If a product is changed
+     directly in Typesense WITHOUT running the insert scripts, users keep
+     seeing the old data until the TTL ends.
+     Rule to follow: any manual data change -> run "python query_cache.py bump".
+     Options: shorter TTL; store only IDs and re-fetch (slower hits).
+     Current: full data, 14 days, version bump.
+
+  8) How long should the TTL be?
+     Halal certificates can expire or be revoked. 14 days means up to 14 days
+     of old status unless the version is bumped.
+     Current: 14 days (QCACHE_TTL_S=1209600).
+
+  9) Valkey memory
+     The cache shares Valkey with chat history, locks and pub/sub. Cache keys
+     always have a TTL, but there is no size limit. An eviction policy such as
+     allkeys-lru could evict session data or locks.
+     Options: a separate Valkey DB/instance for the cache; volatile-ttl
+     policy; a maxmemory limit.
+     Current: shared, no limit.
+
+  10) When to leave shadow mode
+      Suggested rule: go live (QCACHE_SHADOW=false) once shadow_compare shows
+      matched_agree=True for nearly all shadow hits over a few days.
+      Current in local .env: live (QCACHE_SHADOW=false).
+
+  11) Semantic questions
+      Could be cached later with a different key (for example the embedding
+      of the question with a strict similarity threshold). Risky, because
+      "KitKat" and "KitKat Dark" are very similar as embeddings.
+      Current: not cached.
+
+  12) Personalised answers in the future
+      Today answers are the same for every user. If answers later depend on the
+      user (country, diet, preferences), those values MUST go into the key,
+      or one user's personal answer will be served to others.
+
+  13) Image turn whose image fails to decode
+      The image flag is based on the decoded bytes. If decoding fails, the turn
+      is treated as a normal text turn and can be cached. Minor.
+
+  14) Identifier lookup can return an INCOMPLETE list
+      The cache only knows cards that some earlier question saved. If barcode
+      21515 belongs to 2 products in the DB but only 1 was ever cached, the
+      user sees 1 product. Rare (identifiers are usually unique).
+      Options: accept it; or only answer from the index when shadow_compare
+      shows identifier hits agree with the DB.
+      Current: accepted.
+
+  15) Identifier lookup is looser than the DB
+      The DB filter is exact ("01-2345" does not match "012345"), but the
+      cache ignores hyphens/spaces/case. So the cache can find a product the
+      DB search would have missed. Usually better for the user, but the cached
+      and DB answers can differ for the same question.
+      Current: loose.
+
+  16) Tests
+      Existing unit tests for should_continue, stream_agent and
+      _stream_and_persist were not updated for the new node and the use_cache
+      parameter. No tests exist yet for query_cache.py.
+
+
+-------------------------------------------------------------------------------
+6. HANDY COMMANDS
+-------------------------------------------------------------------------------
+  Watch cache logs (PowerShell, from backend/):
+     Get-Content logs\app.log -Wait -Tail 0 | Select-String "qcache"
+
+  Look inside Valkey:
+     docker exec -it redis-new redis-cli
+     SCAN 0 MATCH qcache:* COUNT 100     list cache keys (avoid KEYS in production)
+     GET <key>                           see a saved answer
+     TTL <key>                           seconds left
+     DEL <key>                           remove one answer
+     GET qcache:version                  current version
+
+  Invalidate the whole cache (from backend/):
+     venv\Scripts\python.exe query_cache.py bump
+===============================================================================

@@ -622,5 +622,5 @@ def test_format_results_tolerates_products_without_companies_or_cert_bodies(
     format_results([product])  # must not raise
 
 def test_format_results_still_logs_the_fields_it_has():
-    product = {"norm_name": "X", "companies": ["Acme"], "cert_bodies": ["HFA"], "canonical_id": "1", "halal_status": "Halal", "category_l1": "", "category_l2": ""}
+    product = {"norm_name": "X", "companies": ["Acme"], "cert_bodies": ["HFA"]}
     format_results([product])  # must not raise

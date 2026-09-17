@@ -1,6 +1,8 @@
-from typing import Optional
-from ..models.models import FilterArgs
 from rapidfuzz import fuzz
+from typing import Optional
+from langsmith import traceable
+from ..models.models import FilterArgs
+from log.logger import log
 
 COLLECTION = "halal_products"
 
@@ -13,10 +15,16 @@ FILTER_FIELDS = {
     "cert_bodies", "cert_numbers", "fda_numbers", "barcodes", "marketplace",
 }
 
+# On a WEB fallback the DB never pre-filtered the results, so only the hard
+# identifiers are re-checked (hyphen/case-insensitively) — and only when the web
+# result actually carries that field; a missing identifier is skipped, not rejected.
+WEB_FILTER_FIELDS = {"barcodes", "fda_numbers", "cert_numbers"}
+
 # Tool-call budgets: keyword-first can climb the full ladder
-# (keyword -> web -> semantic x2); a semantic-first query only runs semantic.
+# (keyword -> web -> semantic x2); semantic-first can retry semantic once then fall
+# back to web (semantic -> semantic|web -> web).
 MAX_KEYWORD_CALLS = 5
-MAX_SEMANTIC_CALLS = 2
+MAX_SEMANTIC_CALLS = 3
 
 KEYWORD = "KeywordFilterSearch"
 SEMANTIC = "SemanticFilterSearch"
@@ -197,7 +205,14 @@ def select_tools(first_tool: Optional[str], tools_called: list[str]) -> list[str
     if n == 0:
         return [KEYWORD, SEMANTIC]
     if first_tool == SEMANTIC:
-        return [SEMANTIC]
+        # Semantic-first ladder: retry semantic once, then fall back to web. Web runs
+        # at most once — once it has, only web is left; a 2nd semantic pass with no
+        # exact match forces web next.
+        if WEB in tools_called:
+            return [WEB]
+        if tools_called.count(SEMANTIC) >= 2:
+            return [WEB]
+        return [SEMANTIC, WEB]
     # Keyword-first ladder. Web may run at most once — once it has, only semantic
     # is left; until then keyword can be refined once (2nd call) before web.
     if WEB not in tools_called:
@@ -242,33 +257,59 @@ def validate_ids(returned_ids: list[str], candidate_ids: list[str]) -> tuple[lis
     return valid, hallucinated
 
 
-def _matches_filters(product: dict, active: dict) -> bool:
-    """True if the product satisfies every active filter (case-insensitive)."""
+def _norm_value(v) -> str:
+    """Loose-equality key: lowercase with hyphens and surrounding space removed,
+    so '01-2345' matches '012345' and 'Non-Food' matches 'non food'."""
+    return str(v).replace("-", "").strip().lower()
+
+
+def _matches_filters(product: dict, active: dict, norm=None, skip_missing=False) -> bool:
+    """True if the product satisfies every active filter (case-insensitive).
+    `norm` (if given) is applied to both sides for looser equality — e.g.
+    hyphen-insensitive barcode/cert-number matching on web results.
+    `skip_missing` skips (rather than rejects) a filter the product has no value
+    for — used for unverified web results that often omit identifiers."""
+    norm = norm or (lambda v: str(v).lower())
     for key, want in active.items():
         have = product.get(key)
-        if have is None:
+        if not have:
+            if skip_missing:
+                continue
             return False
         if isinstance(want, list):
-            have_set = {str(x).lower() for x in (have if isinstance(have, list) else [have])}
-            if not all(str(w).lower() in have_set for w in want):
+            have_set = {norm(x) for x in (have if isinstance(have, list) else [have])}
+            if not all(norm(w) in have_set for w in want):
                 return False
         elif isinstance(have, list):
-            if str(want).lower() not in {str(x).lower() for x in have}:
+            if norm(want) not in {norm(x) for x in have}:
                 return False
-        elif str(have).lower() != str(want).lower():
+        elif norm(have) != norm(want):
             return False
     return True
 
 
-def apply_filter_check(products: list[dict], filters: Optional[dict]) -> tuple[list[dict], list[dict]]:
+@traceable
+def apply_filter_check(
+    products: list[dict],
+    filters: Optional[dict],
+    only_fields: Optional[set] = None,
+    loose: bool = False,
+    skip_missing: bool = False,
+) -> tuple[list[dict], list[dict]]:
     """Split products into (passers, rejected) by the exact filters the user gave.
-    Mostly a safety net for web results (DB results are already filtered). Pure."""
+    Mostly a safety net for web results (DB results are already filtered).
+    only_fields restricts the check to those filter keys; loose uses
+    hyphen/case-insensitive equality; skip_missing passes a product that has no
+    value for a filtered field instead of rejecting it. Pure."""
     active = {k: v for k, v in (filters or {}).items() if v}
+    if only_fields is not None:
+        active = {k: v for k, v in active.items() if k in only_fields}
     if not active:
         return list(products), []
+    norm = _norm_value if loose else None
     passers, rejected = [], []
     for p in products:
-        (passers if _matches_filters(p, active) else rejected).append(p)
+        (passers if _matches_filters(p, active, norm, skip_missing) else rejected).append(p)
     return passers, rejected
 
 
@@ -370,3 +411,75 @@ def canonicalize_args(tool_args: dict) -> dict:
 
 # for example in example_lists:
 #     print(canonicalize_args(example))
+
+
+def build_search_prompt(tool_names: list[str], allow_direct: bool = False) -> str:
+    """Assemble the search-node system prompt for exactly the tools bound on this call.
+
+    The assembly logic lives here; the prompt TEXT constants stay in prompts/prompt.py
+    and are imported lazily inside this function to avoid a circular import (prompt.py
+    imports KEYWORD/SEMANTIC/WEB/CANONICAL_LISTS from this module at load time)."""
+    from ..prompts.prompt import (
+        SEARCH_PROMPT_BASE, SEARCH_ROUTING_RULES,
+        INSTR_KEYWORD_NAME, INSTR_KEYWORD_SEMANTIC_BOUNDARY, INSTR_KEYWORD_FILTERS_ONLY,
+        INSTR_SEMANTIC, INSTR_KEYWORD_WEB, INSTR_INTENT_SCOPE, INSTR_NO_INFER,
+        INSTR_NORMALIZATION, INSTR_SECURITY,
+        PRODUCT_SCHEMA_HEADER, PRODUCT_SCHEMA_KEYWORD, PRODUCT_SCHEMA_FILTERS,
+        CONTEXT, _TOOL_BLOCKS, SEARCH_PROMPT_TRAILER,
+    )
+
+    if not isinstance(tool_names, list) or not all(
+        isinstance(n, str) for n in tool_names
+    ):
+        log.warning("build_search_prompt.bad_tool_names", tool_names=repr(tool_names))
+        raise TypeError("tool_names must be a list of strings")
+    names = set(tool_names)
+    has_filter_tool = KEYWORD in names or SEMANTIC in names
+
+    parts = [SEARCH_PROMPT_BASE]
+    if allow_direct:
+        parts.append(SEARCH_ROUTING_RULES)
+
+    # Instructions gated to the bound tools: a selection rule only appears when its
+    # tool is available, the keyword↔semantic boundary only when both are, and the
+    # intent/scope rule only on the first (unforced) call. Numbered fresh each call.
+    instr = []
+    if KEYWORD in names:
+        instr.append(INSTR_KEYWORD_NAME)
+    if KEYWORD in names and SEMANTIC in names:
+        instr.append(INSTR_KEYWORD_SEMANTIC_BOUNDARY)
+    if KEYWORD in names:
+        instr.append(INSTR_KEYWORD_FILTERS_ONLY)
+    if SEMANTIC in names:
+        instr.append(INSTR_SEMANTIC)
+    if WEB in names:
+        instr.append(INSTR_KEYWORD_WEB)
+    if allow_direct:
+        instr.append(INSTR_INTENT_SCOPE)
+    instr.append(INSTR_NO_INFER)
+    if has_filter_tool:
+        instr.append(INSTR_NORMALIZATION)
+    instr.append(INSTR_SECURITY)
+    parts.append(
+        "## INSTRUCTIONS\n\n" + "\n\n".join(f"{i}. {t}" for i, t in enumerate(instr, 1))
+    )
+
+    # Context: product schema + canonical filter lists — only for DB tools that
+    # accept filters (a bare WebSearch loop call needs neither).
+    if has_filter_tool:
+        schema = [PRODUCT_SCHEMA_HEADER]
+        if KEYWORD in names:
+            schema.append(PRODUCT_SCHEMA_KEYWORD)
+        schema.append(PRODUCT_SCHEMA_FILTERS)
+        parts.append("\n\n".join(schema))
+        parts.append(CONTEXT)
+
+    # Examples per bound tool, in ladder order, each labelled by its tool name.
+    tool_blocks = [
+        f"### {name}\n\n{block}" for name, block in _TOOL_BLOCKS if name in names
+    ]
+    if tool_blocks:
+        parts.append("## TOOLS\n\n" + "\n\n".join(tool_blocks))
+
+    parts.append(SEARCH_PROMPT_TRAILER)
+    return "\n\n".join(parts)

@@ -3,6 +3,7 @@ import json
 import time
 from log.logger import logger
 from config.typesense_client import TS_CLIENT
+from query_cache import bump_version as bump_query_cache_version
 
 # additional code for vector generation
 from langchain_fireworks import FireworksEmbeddings
@@ -104,6 +105,9 @@ def insert_bulk_docs(data: list[dict], collection_name: str):
             logger.error(f"Failed insertions ({len(failed_ids)}) canonical_ids: {failed_ids}")
         else:
             logger.info("All documents inserted successfully!")
+        if success_count:
+            # Product data changed: orphan every cached chat answer.
+            logger.info(f"Query cache version bumped to {bump_query_cache_version()}")
         return failed_ids
     except Exception as e:
         logger.error(f"Some error occured while bulk uploading documents, Error: {e}")

@@ -1,4 +1,8 @@
 typesense-data/
 .claude/
-/graphify-out 
-/canonical_products
+Halalify_Backend_Integration_Guide.docx
+Halalify_Dashboard_Metrics.docx
+canonical_products/
+graphify-out/
+/Barcode_Lookup_Backend.docx
+/Barcode_Lookup_Protocol.docx

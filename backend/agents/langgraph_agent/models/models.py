@@ -1,8 +1,8 @@
 import operator
-from typing import Annotated, Any, Dict, List, Literal, Optional, TypedDict
-
+from pydantic import BaseModel, Field
+from typing import Optional, Dict, Any
 from langchain.messages import AnyMessage
-from pydantic import BaseModel, Field, field_validator
+from typing import List, TypedDict, Annotated, Literal
 
 
 # main search agent state
@@ -17,11 +17,18 @@ class SearchAgentState(TypedDict):
     classification: Optional[str]    # "search" | "direct" (set by classify_intent)
     tools_called: Annotated[List[str], operator.add]  # tool names run, in order
     first_tool: Optional[str]        # tool the first search call chose (sets the ladder + budget)
-    keyword_params: Optional[dict]   # latest KeywordFilterSearch keyword_args (what the user wants)
-    filters: Optional[dict]          # latest KeywordFilterSearch filter_args
+    keyword_params: Optional[dict]   # pinned first-call match criteria (keyword_args, or {companies} for semantic)
+    filters: Optional[dict]          # pinned first-call filter_args
+    semantic_query: Optional[str]    # pinned first semantic query text (for the deterministic web fallback)
     current_pool: List[dict]         # raw results of the latest tool call (judge input; never sent whole to an LLM)
     matched: List[dict]              # exact matches / variants (magnified in the UI)
     relevant: List[dict]             # similar-but-not-exact (diminished in the UI)
+
+    # --- global query cache (see query_cache.py) ---
+    cache_enabled: bool              # caller allows caching this turn (False for image-derived prompts)
+    cache_key: Optional[str]         # key built from the first KeywordFilterSearch call; None = not cacheable
+    cache_hit: bool                  # True when the products were served from the cache
+    cache_shadow: Optional[dict]     # shadow mode: the entry that WOULD have been served, for comparison
 
 # classify intent schema
 # The property name must stay in sync with CLASSIFICATION_PROMPT (which tells the model
@@ -147,25 +154,6 @@ class FilterArgs(BaseModel):
     marketplace: Optional[list[str]] = Field(None, description="Marketplaces like Amazon, eBay") 
 
 
-# class KeywordArgs(BaseModel):
-#     """Text-match keyword fields for KeywordFilterSearch. Both are optional — supply
-#     only what the user's query actually names."""
-#     norm_name: Optional[str] = Field(
-#         None,
-#         description=(
-#             "The product or ingredient name to text-match, reduced to its core terms "
-#             "(lowercase, brand removed). E.g. \"is Shan biryani masala halal?\" -> "
-#             "\"biryani masala\". Null if the query names no product or ingredient."
-#         ),
-#     )
-#     companies: Optional[List[str]] = Field(
-#         None,
-#         description=(
-#             "Brand or company names mentioned in the query, one per list item. "
-#             "E.g. [\"Shan\"], [\"Nestle\", \"Maggi\"]. Null if no brand is named."
-#         ),
-#     )
-
 class KeywordArgs(BaseModel):
     """Text-match keyword fields for KeywordFilterSearch. Both are optional — supply
     only what the user's query actually names."""
@@ -185,24 +173,6 @@ class KeywordArgs(BaseModel):
         ),
     )
 
-    @field_validator("norm_name", mode="before")
-    @classmethod
-    def _coerce_norm_name(cls, v):
-        # The LLM occasionally sends a non-string scalar (int/float/bool) instead of
-        # text. Coerce rather than reject, so a malformed arg degrades to "no
-        # products found" instead of a generic error apology (Finding #5).
-        if v is None or isinstance(v, str):
-            return v
-        return str(v)
-
-    @field_validator("companies", mode="before")
-    @classmethod
-    def _coerce_companies(cls, v):
-        if v is None:
-            return v
-        if not isinstance(v, list):
-            v = [v]
-        return [item if isinstance(item, str) else str(item) for item in v]
 
 class KeywordFilterInput(BaseModel):
     keyword_args: Optional[KeywordArgs] = Field(
@@ -226,8 +196,17 @@ class SemanticFilterInput(BaseModel):
     semantic_query: str = Field(
         description=(
             "Natural language semantic query extracted from user intent. "
-            "E.g. 'a calcium-rich snack for children', 'traditional Pakistani spice blend'."
+            "E.g. 'a calcium-rich snack for children', 'traditional Pakistani spice blend'. "
+            "Include the brand/company here too if one is named (e.g. 'Nestle chocolates')."
         )
+    )
+    companies: Optional[List[str]] = Field(
+        None,
+        description=(
+            "Brand or company names named in the query, one per list item, e.g. [\"Nestle\"]. "
+            "When set, the search also keyword-matches on companies so brand-matching products "
+            "are surfaced and checked. Null if no brand is named."
+        ),
     )
     filter_args: Optional[FilterArgs] = Field(
         None,

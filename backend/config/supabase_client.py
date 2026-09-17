@@ -1,10 +1,7 @@
-import asyncio
 import os
-
-from config.timeouts import SUPABASE_TIMEOUT_S
+import asyncio
+from supabase import create_async_client, AsyncClient
 from dotenv import load_dotenv
-from supabase import AsyncClient, create_async_client
-from supabase.lib.client_options import AsyncClientOptions
 
 load_dotenv()
 
@@ -28,8 +25,5 @@ async def get_supabase() -> AsyncClient:
                 key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
                 if not url or not key:
                     raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in .env")
-                _supabase = await create_async_client(
-                    url, key,
-                    options=AsyncClientOptions(postgrest_client_timeout=SUPABASE_TIMEOUT_S),
-                )
+                _supabase = await create_async_client(url, key)
     return _supabase
