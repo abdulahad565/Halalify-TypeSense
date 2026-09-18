@@ -167,6 +167,36 @@ def _grounding_for(grounding: List[Dict], index: int) -> List[Dict]:
     ]
 
 
+# When the web has nothing, Exa still synthesises a product to satisfy the schema —
+# "Unknown product with barcode 03092488324", "No product found", a name that is just
+# the number we searched for. Showing those as product cards is worse than saying we
+# found nothing, so a synthesised product has to clear two bars: a name that isn't a
+# placeholder, and at least one fact that makes the card worth showing.
+_PLACEHOLDER_NAME_TERMS = (
+    "unknown", "unidentified", "not found", "no product", "no matching",
+    "not available", "n/a", "unspecified", "unnamed", "no result",
+)
+# Any ONE of these makes a card useful: without them it's a name and nothing else.
+_SUBSTANCE_FIELDS = ("halal_status", "companies", "cert_bodies", "cert_numbers")
+
+
+def _is_meaningful(product: Dict) -> tuple[bool, str]:
+    """(keep?, reason) for one Exa-synthesised product."""
+    name = str(product.get("norm_name") or "").strip()
+    if not name:
+        return False, "no_name"
+    lowered = name.lower()
+    if any(term in lowered for term in _PLACEHOLDER_NAME_TERMS):
+        return False, "placeholder_name"
+    # A "name" that is only the identifier we searched for (digits/punctuation) is
+    # the model echoing the query back, not a product.
+    if not any(c.isalpha() for c in name):
+        return False, "name_is_just_the_number"
+    if not any(product.get(f) for f in _SUBSTANCE_FIELDS):
+        return False, "no_halal_info"
+    return True, ""
+
+
 @tool(args_schema=WebSearchInput)
 def WebSearch(query: str) -> List[Dict]:
     """Web search for a specific halal product, used only as a fallback
@@ -215,7 +245,11 @@ def WebSearch(query: str) -> List[Dict]:
     # even when a malformed product is skipped.
     results: List[Dict] = []
     for i, product in enumerate(products):
-        if not product.get("norm_name"):
+        keep, reason = _is_meaningful(product)
+        if not keep:
+            # Better to report "nothing found" than to show a card the user can't use.
+            log.info("tool.web_search.discarded", reason=reason,
+                     name=str(product.get("norm_name") or "")[:80], query=query[:80])
             continue
         product["canonical_id"] = f"halal_{uuid.uuid4().hex[:8]}"
         product["verified"] = False

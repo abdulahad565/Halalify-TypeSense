@@ -14,6 +14,8 @@ from langchain.messages import SystemMessage, HumanMessage, ToolMessage, AIMessa
 from ..models.models import SearchAgentState, OutputSchema, JudgeVerdict
 from ..LLMs.llm import standard_llm, judge_llm
 from ..prompts.prompt import (
+    IDENTIFIER_LABELS,
+    UNVERIFIED_IDENTIFIER_NOTE,
     JUDGE_PROMPT,
     NO_EXACT_SIMILAR_MSG,
     NO_RESULTS_MSG,
@@ -24,6 +26,7 @@ from ..utils.utils import (
     KEYWORD_FIELDS,
     WEB_FILTER_FIELDS,
     build_search_prompt,
+    invalid_barcode_message,
     select_tools,
     should_loop,
     validate_ids,
@@ -31,7 +34,6 @@ from ..utils.utils import (
     dedup_by_id,
     _compact_for_judge,
 )
-
 
 TOOLS_BY_NAME = {
     t.name: t for t in [KeywordFilterSearch, SemanticFilterSearch, WebSearch]
@@ -99,6 +101,10 @@ def _web_tool_call(query: str) -> AIMessage:
     )
 
 
+def _as_list(value) -> list:
+    return value if isinstance(value, list) else ([value] if value else [])
+
+
 def search_node(state: SearchAgentState) -> dict:
     """Issue one search tool call, or (first call only) reply directly.
 
@@ -133,17 +139,26 @@ def search_node(state: SearchAgentState) -> dict:
                     return {"messages": [_web_tool_call(query)]}
             return {"messages": [AIMessage(content="")]}
         raise
+    tool_calls = getattr(result, "tool_calls", None)
+    # A malformed barcode can only return nothing, so reply instead of searching.
+    for call in tool_calls or []:
+        if call["name"] in (KeywordFilterSearch.name, SemanticFilterSearch.name):
+            message = invalid_barcode_message((call.get("args") or {}).get("filter_args"))
+            if message:
+                log.info("barcode.invalid", args=call.get("args"))
+                return {"messages": [AIMessage(content=message)], "classification": "direct"}
+
     update = {"messages": [result]}
     # Only the first (unforced) call decides the route: a tool call means search,
     # no tool call means the model already wrote a direct reply.
     if is_first:
-        update["classification"] = (
-            "search" if getattr(result, "tool_calls", None) else "direct"
-        )
+        update["classification"] = "search" if tool_calls else "direct"
     return update
 
 
-def should_continue(state: SearchAgentState) -> Literal["cache_node", "tool_node", "response_node"]:
+def should_continue(
+    state: SearchAgentState,
+) -> Literal["cache_node", "tool_node", "response_node"]:
     """Run the pending tool call, or (safety only, since the call is forced) go
     straight to the response. The FIRST call of a turn goes through cache_node,
     which either serves it from the cache or passes it on to tool_node; retry
@@ -154,7 +169,9 @@ def should_continue(state: SearchAgentState) -> Literal["cache_node", "tool_node
     return "tool_node" if state.get("tools_called") else "cache_node"
 
 
-def cache_node(state: SearchAgentState) -> Command[Literal["tool_node", "response_node"]]:
+def cache_node(
+    state: SearchAgentState,
+) -> Command[Literal["tool_node", "response_node"]]:
     """Global query cache in front of the first search call.
 
     Only keyword-first searches are keyed (on the LLM's resolved args, so any
@@ -177,7 +194,9 @@ def cache_node(state: SearchAgentState) -> Command[Literal["tool_node", "respons
         log.info("qcache.skip", reason="not_keyword_search", tool=call["name"])
         return miss
 
-    key = query_cache.build_key(call["args"].get("keyword_args"), call["args"].get("filter_args"))
+    key = query_cache.build_key(
+        call["args"].get("keyword_args"), call["args"].get("filter_args")
+    )
     if key is None:
         log.info("qcache.skip", reason="no_key")
         return miss
@@ -200,11 +219,19 @@ def cache_node(state: SearchAgentState) -> Command[Literal["tool_node", "respons
 
     if query_cache.SHADOW:
         log.info("qcache.shadow_hit", key=key, source=source)
-        return Command(update={"cache_key": key, "cache_shadow": cached}, goto="tool_node")
+        return Command(
+            update={"cache_key": key, "cache_shadow": cached}, goto="tool_node"
+        )
 
     matched = cached.get("matched") or []
     relevant = cached.get("relevant") or []
-    log.info("qcache.hit", key=key, source=source, matched=len(matched), relevant=len(relevant))
+    log.info(
+        "qcache.hit",
+        key=key,
+        source=source,
+        matched=len(matched),
+        relevant=len(relevant),
+    )
 
     # Same stream event tool_node emits, so the UI renders a hit like a fresh search.
     products = matched + relevant
@@ -213,8 +240,8 @@ def cache_node(state: SearchAgentState) -> Command[Literal["tool_node", "respons
 
     summary = (
         f"{call['name']}: found {len(matched)} matching product(s)."
-        if matched else
-        f"{call['name']}: no products matched."
+        if matched
+        else f"{call['name']}: no products matched."
     )
     return Command(
         update={
@@ -282,7 +309,9 @@ def tool_node(state: SearchAgentState) -> dict:
             update["keyword_params"] = keyword_params
             update["filters"] = filters
         elif ran == SemanticFilterSearch.name:
-            update["keyword_params"] = {"companies": semantic_companies} if semantic_companies else None
+            update["keyword_params"] = (
+                {"companies": semantic_companies} if semantic_companies else None
+            )
             update["filters"] = filters
             update["semantic_query"] = semantic_query
     return update
@@ -359,6 +388,44 @@ def _judge_matches(keyword_params: dict, candidates: list) -> list:
     return valid
 
 
+def _identifier_filters(filters: dict | None) -> dict:
+    """The identifier filters (barcode / FDA / cert number) the user gave."""
+    return {
+        k: _as_list(v)
+        for k, v in (filters or {}).items()
+        if k in WEB_FILTER_FIELDS and v
+    }
+
+
+def _split_web_results(pool: list, filters: dict | None) -> tuple[list, list]:
+    """Split web results into (passers, unverified) against the identifiers the
+    user gave; products that CONTRADICT an identifier are dropped.
+
+    - passers:    carry every identifier field the user gave, with a matching value
+                  → can be judged as a match.
+    - unverified: simply don't list that field (web pages rarely show barcodes or FDA
+                  numbers) → may be the product, but nothing confirms the number, so
+                  they are only ever shown as similar, never as an exact match.
+    - dropped:    list the field with a DIFFERENT value → contradicts the user.
+    With no identifier filters every product passes, exactly as before.
+    """
+    lenient, _rejected = apply_filter_check(
+        pool, filters, only_fields=WEB_FILTER_FIELDS, loose=True, skip_missing=True
+    )
+    strict, _ = apply_filter_check(
+        lenient, filters, only_fields=WEB_FILTER_FIELDS, loose=True, skip_missing=False
+    )
+    strict_ids = {id(p) for p in strict}
+    unverified = [p for p in lenient if id(p) not in strict_ids]
+    if unverified:
+        log.info(
+            "judge.web_unverified_identifiers",
+            count=len(unverified),
+            fields=sorted(_identifier_filters(filters)),
+        )
+    return strict, unverified
+
+
 def judge_node(
     state: SearchAgentState,
 ) -> Command[Literal["response_node", "orchestration_node"]]:
@@ -379,19 +446,16 @@ def judge_node(
     prior_relevant = state.get("relevant", [])
     keyword_params = state.get("keyword_params")
     last_tool = state.get("tools_called", [])[-1] if state.get("tools_called") else None
+    # Web products that don't carry an identifier the user gave: shown as similar,
+    # never as a match (see _split_web_results).
+    unverified: list = []
 
     if state.get("first_tool") == SemanticFilterSearch.name:
         # Semantic-first. Web results (only reachable as a semantic fallback) get the
         # same hard-identifier check as the keyword path; DB semantic results are
         # already Typesense-filtered, so they pass through.
         if last_tool == WebSearch.name:
-            passers, _rejected = apply_filter_check(
-                pool,
-                state.get("filters"),
-                only_fields=WEB_FILTER_FIELDS,
-                loose=True,
-                skip_missing=True,
-            )
+            passers, unverified = _split_web_results(pool, state.get("filters"))
         else:
             passers = pool
         if keyword_params:
@@ -411,13 +475,7 @@ def judge_node(
         # identifiers only, hyphen/case-insensitively, and only where the result
         # actually carries that field (see WEB_FILTER_FIELDS).
         if last_tool == WebSearch.name:
-            passers, _rejected = apply_filter_check(
-                pool,
-                state.get("filters"),
-                only_fields=WEB_FILTER_FIELDS,
-                loose=True,
-                skip_missing=True,
-            )
+            passers, unverified = _split_web_results(pool, state.get("filters"))
         else:
             passers, _rejected = apply_filter_check(pool, state.get("filters"))
         if keyword_params:
@@ -431,8 +489,14 @@ def judge_node(
             matched, non_matched = passers, []
 
     # Non-matching passers are always relevant/similar, accumulated across calls
-    # and de-duplicated. Filter-rejected products never enter relevant.
-    relevant = dedup_by_id(prior_relevant + non_matched)
+    # and de-duplicated. Filter-rejected products never enter relevant; unverified
+    # web products do (they may well be the product — we just can't confirm it).
+    relevant = dedup_by_id(prior_relevant + non_matched + unverified)
+    unverified_update = (
+        {"unverified_identifiers": _identifier_filters(state.get("filters"))}
+        if unverified
+        else {}
+    )
 
     # Author the ToolMessage here (not in tool_node) so it states the JUDGED
     # outcome: on a no-match loop, search_node reads an authoritative "no products
@@ -455,11 +519,17 @@ def judge_node(
                 "messages": tool_messages,
                 "matched": matched,
                 "relevant": relevant,
+                **unverified_update,
             },
             goto="response_node",
         )
     return Command(
-        update={"messages": tool_messages, "matched": [], "relevant": relevant},
+        update={
+            "messages": tool_messages,
+            "matched": [],
+            "relevant": relevant,
+            **unverified_update,
+        },
         goto="orchestration_node",
     )
 
@@ -491,6 +561,20 @@ def _project(raw: dict) -> dict:
     return proj
 
 
+def _unverified_note(identifiers: dict | None) -> str:
+    """'I couldn't confirm barcode `X` on these results.' — or '' if nothing to say."""
+    parts = [
+        f"{IDENTIFIER_LABELS.get(field, field)} " + ", ".join(f"`{v}`" for v in values)
+        for field, values in (identifiers or {}).items()
+        if values
+    ]
+    return (
+        UNVERIFIED_IDENTIFIER_NOTE.format(identifiers=" or ".join(parts))
+        if parts
+        else ""
+    )
+
+
 def response_node(state: SearchAgentState) -> dict:
     """Attach the already-decided product buckets and set the message.
 
@@ -517,6 +601,11 @@ def response_node(state: SearchAgentState) -> dict:
             if state.get("first_tool") == SemanticFilterSearch.name
             else NO_EXACT_SIMILAR_MSG
         )
+        # Say WHY these aren't exact: some couldn't be checked against the
+        # barcode / FDA / cert number the user gave.
+        note = _unverified_note(state.get("unverified_identifiers"))
+        if note:
+            response = f"{response} {note}"
     elif state.get("classification") == "search":
         response = NO_RESULTS_MSG
     else:
@@ -559,8 +648,10 @@ def _save_to_cache(state: SearchAgentState, matched: list, relevant: list) -> No
         log.info(
             "qcache.shadow_compare",
             key=key,
-            matched_agree=query_cache.ids(shadow.get("matched")) == query_cache.ids(matched),
-            relevant_agree=query_cache.ids(shadow.get("relevant")) == query_cache.ids(relevant),
+            matched_agree=query_cache.ids(shadow.get("matched"))
+            == query_cache.ids(matched),
+            relevant_agree=query_cache.ids(shadow.get("relevant"))
+            == query_cache.ids(relevant),
         )
 
     if WebSearch.name in (state.get("tools_called") or []):

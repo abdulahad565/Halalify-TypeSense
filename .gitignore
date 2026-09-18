@@ -2,5 +2,37 @@ typesense-data/
 .claude/
 Halalify_Backend_Integration_Guide.docx
 Halalify_Dashboard_Metrics.docx
-Barcode_Lookup_Backend.docx
-Barcode_Lookup_Protocol.docx
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual environments (anywhere in the repo)
+venv/
+.venv/
+env/
+
+# Local log files written when LOG_FILE_PATH is set (tailed by Grafana Alloy)
+backend/logs/
+*.log
+
+# Product data + embedding/insert run artifacts (large, regenerated locally)
+backend/data/
+canonical_products.json
+embeddings_checkpoint.jsonl
+processing_checkpoint.json
+embedding_failures*.json
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

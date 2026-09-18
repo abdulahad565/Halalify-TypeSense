@@ -413,6 +413,29 @@ def canonicalize_args(tool_args: dict) -> dict:
 #     print(canonicalize_args(example))
 
 
+def is_valid_barcode(value) -> bool:
+    """A barcode just has to contain a digit. Anything stricter (GTIN length or check
+    digit) rejects real barcodes in the catalogue, e.g. 'D02001', '03001', '00000'."""
+    return any(c.isdigit() for c in str(value))
+
+
+def invalid_barcode_message(filter_args) -> Optional[str]:
+    """The reply to send instead of searching when a tool call carries a value that
+    isn't a barcode at all, or None when every barcode is usable."""
+    barcodes = dict(filter_args or {}).get("barcodes") or []
+    if isinstance(barcodes, str):
+        barcodes = [barcodes]
+    bad = [str(b) for b in barcodes if not is_valid_barcode(b)]
+    if not bad:
+        return None
+    values = ", ".join(f"`{b}`" for b in bad)
+    return (
+        f"{values} doesn't look like a barcode — a barcode is the number printed under the "
+        "bars on the pack.\n\n"
+        "Please send that number, or tell me the product name and I'll search for it that way."
+    )
+
+
 def build_image_url(base64: str, mime_type: str) -> list:
     image_url = f"data:{mime_type};base64,{base64}"
     return image_url
@@ -427,6 +450,7 @@ def build_search_prompt(tool_names: list[str], allow_direct: bool = False) -> st
     from ..prompts.prompt import (
         SEARCH_PROMPT_BASE, SEARCH_ROUTING_RULES,
         INSTR_KEYWORD_NAME, INSTR_KEYWORD_SEMANTIC_BOUNDARY, INSTR_KEYWORD_FILTERS_ONLY,
+        INSTR_IDENTIFIER_CLARIFY,
         INSTR_SEMANTIC, INSTR_KEYWORD_WEB, INSTR_INTENT_SCOPE, INSTR_NO_INFER,
         INSTR_NORMALIZATION, INSTR_SECURITY,
         PRODUCT_SCHEMA_HEADER, PRODUCT_SCHEMA_KEYWORD, PRODUCT_SCHEMA_FILTERS,
@@ -459,6 +483,10 @@ def build_search_prompt(tool_names: list[str], allow_direct: bool = False) -> st
         instr.append(INSTR_SEMANTIC)
     if WEB in names:
         instr.append(INSTR_KEYWORD_WEB)
+    if KEYWORD in names and allow_direct:
+        # Only on the first call: the model may still reply directly there, which is
+        # what asking "barcode, FDA or cert number?" requires.
+        instr.append(INSTR_IDENTIFIER_CLARIFY)
     if allow_direct:
         instr.append(INSTR_INTENT_SCOPE)
     instr.append(INSTR_NO_INFER)
