@@ -236,6 +236,43 @@ async def delete_session(session_id: str, user_id: str) -> bool:
     return True
 
 
+async def delete_trailing_user_message(session_id: str, user_id: str) -> str | None:
+    """If the session's most recent message is a USER turn (an orphaned prompt whose
+    answer pipeline died before persisting a reply), delete that message and return
+    its text. Otherwise leave the session untouched and return None. Verifies
+    ownership first (service role bypasses RLS). Idempotent: a second call after the
+    row is gone simply finds no trailing user turn and returns None."""
+    if not await session_exists(session_id, user_id):
+        return None
+
+    client = await get_supabase()
+    res = await _with_retry(
+        lambda: client
+        .table("chat_messages")
+        .select("id, role, content")
+        .eq("session_id", session_id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute(),
+        "get_trailing_message",
+    )
+    rows = res.data or []
+    if not rows or rows[0].get("role") != "user":
+        return None
+
+    orphan = rows[0]
+    await _with_retry(
+        lambda: client
+        .table("chat_messages")
+        .delete()
+        .eq("id", orphan["id"])
+        .eq("session_id", session_id)
+        .execute(),
+        "delete_trailing_user_message",
+    )
+    return orphan.get("content") or ""
+
+
 # ---------- reads ----------
 
 async def get_sessions(user_id: str) -> list:

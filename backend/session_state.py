@@ -20,8 +20,8 @@ from log.logger import log
 # TTL is a dead-owner detector, not a max pipeline time: the heartbeat renews it
 # well within this window, so a live pipeline never expires; only a crashed
 # instance (renewals stop) lets it lapse.
-INFLIGHT_TTL = 300           # seconds
-_HEARTBEAT_INTERVAL = 100    # seconds; comfortably < INFLIGHT_TTL to survive a missed beat
+INFLIGHT_TTL = 120           # seconds
+_HEARTBEAT_INTERVAL = 40     # seconds; comfortably < INFLIGHT_TTL to survive a missed beat
 
 # Renew / release only if we still own the key (compare-and-act, atomically), so
 # a stale renew/release can never touch a successor's reservation.

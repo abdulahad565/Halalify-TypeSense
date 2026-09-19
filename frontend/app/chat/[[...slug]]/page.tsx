@@ -88,6 +88,16 @@ const syncUrl = (sessionId: string | null, mode: "push" | "replace" = "push") =>
     else window.history.replaceState(null, "", url)
 }
 
+// Per-session client-only stashes. Draft = unsent composer text (restored into the
+// input on return). Orphan = a prompt whose answer never came (shown as a pending
+// bubble with resend/discard); the DB row is already gone, so this keeps the choice
+// alive across reloads. Both are wrapped in try/catch since storage can throw.
+const draftKey = (sid: string) => `halalify:draft:${sid}`
+const orphanKey = (sid: string) => `halalify:orphan:${sid}`
+const readStash = (key: string): string | null => { try { return localStorage.getItem(key) } catch { return null } }
+const writeStash = (key: string, val: string) => { try { localStorage.setItem(key, val) } catch { } }
+const clearStash = (key: string) => { try { localStorage.removeItem(key) } catch { } }
+
 const hostOf = (url: string) => { try { return new URL(url).hostname.replace(/^www\./, "") } catch { return url } }
 const faviconOf = (url: string) => { try { return `https://www.google.com/s2/favicons?sz=64&domain=${new URL(url).hostname}` } catch { return "" } }
 const formatFieldValue = (value: unknown): string => {
@@ -325,6 +335,9 @@ export default function Page() {
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
     const [toast, setToast] = useState<string | null>(null)
     const [showDisconnected, setShowDisconnected] = useState<boolean>(false)
+    // An unanswered prompt the server lifted out of the DB — rendered as a pending
+    // bubble with resend/discard. Transient UI state, backed by a localStorage stash.
+    const [orphanPrompt, setOrphanPrompt] = useState<string | null>(null)
     const isConnectedRef = useRef(isConnected)
 
     const [runtime, dispatch] = useReducer(runtimeReducer, undefined, emptyRuntime)
@@ -369,10 +382,25 @@ export default function Page() {
         sendMessage(JSON.stringify({ type: "chat_history", session_id: threadId, serialize: false }))
     }, [threadId, isConnected, sendMessage])
 
+    // Spinner self-heal: while a spinner is up, re-poll history so a dead pipeline
+    // (whose answer will never stream in) is discovered without a manual reload. Once
+    // its in-flight lease lapses (INFLIGHT_TTL ~2min), a poll returns inflight=false and
+    // surfaces the orphan (or the persisted answer). Harmless for a live pipeline — the
+    // handler ignores inflight=true polls, and a completed answer clears `loading` and
+    // stops the interval. First poll fires after one interval, acting as the timeout.
+    useEffect(() => {
+        if (!loading || !isConnected) return
+        const id = setInterval(() => {
+            sendMessage(JSON.stringify({ type: "chat_history", session_id: threadId, serialize: false }))
+        }, 20000)
+        return () => clearInterval(id)
+    }, [loading, isConnected, threadId, sendMessage])
+
     // Back/forward between sessions.
     useEffect(() => {
         const onPopState = () => {
             const id = sessionIdFromPath()
+            setOrphanPrompt(null)
             setHistoryLoading(id !== undefined)
             setThreadId(id ?? crypto.randomUUID())
         }
@@ -446,6 +474,13 @@ export default function Page() {
                     return
                 }
 
+                // A poll (see the spinner-poll effect): we already loaded this session
+                // and it's still showing a spinner. If the pipeline is STILL inflight,
+                // do nothing — re-hydrating would clobber a live stream. We only act on
+                // this poll once inflight flips false (answer landed, or it died → orphan).
+                const isPoll = !historyLoadingRef.current && loadedSessionRef.current === (data.session_id ?? threadId)
+                if (isPoll && data.inflight === true) return
+
                 const c = data.compaction
                 const compaction: Compaction = c?.phase === "awaiting"
                     ? { phase: "awaiting", message: c.message, disclaimer: c.disclaimer }
@@ -458,6 +493,15 @@ export default function Page() {
                     runtime: { ...emptyRuntime(), messages: msgs, loading: stillRunning, loadingPhrase: stillRunning ? pickPhrase() : "", compaction },
                 })
                 loadedSessionRef.current = data.session_id ?? threadId
+                // Orphaned prompt: the server just detected + deleted an unanswered
+                // user turn. Show it as a pending bubble and stash it so a reload
+                // before the user decides still offers resend/discard. (Restore of a
+                // previously-stashed orphan happens in the [threadId] effect below.)
+                const orphanSid = data.session_id ?? threadId
+                if (data.orphan_prompt?.message) {
+                    setOrphanPrompt(data.orphan_prompt.message)
+                    writeStash(orphanKey(orphanSid), data.orphan_prompt.message)
+                }
                 setHistoryLoading(false)
                 return
             }
@@ -476,8 +520,9 @@ export default function Page() {
 
             if (data.type === "delete_session" && data.status === "acknowledged") {
                 setSessions(prev => prev.filter(s => s.session_id !== data.session_id))
+                if (data.session_id) { clearStash(draftKey(data.session_id)); clearStash(orphanKey(data.session_id)) }
                 setToast("Session deleted")
-                if (data.session_id === threadId) { setHistoryLoading(false); setThreadId(crypto.randomUUID()); syncUrl(null, "replace") }
+                if (data.session_id === threadId) { setOrphanPrompt(null); setHistoryLoading(false); setThreadId(crypto.randomUUID()); syncUrl(null, "replace") }
                 return
             }
         } catch { }
@@ -495,12 +540,27 @@ export default function Page() {
         return () => clearTimeout(id)
     }, [isConnected])
 
+    // Restore per-session state when the active session settles (switch / reload).
+    // Draft goes back into the composer; a stashed orphan re-shows its pending bubble.
+    // Runs once history has loaded so the composer is mounted (inputRef is live).
+    useEffect(() => {
+        if (historyLoading) return
+        const draft = readStash(draftKey(threadId)) ?? ""
+        if (inputRef.current) inputRef.current.innerText = draft
+        setIsTextPresent(draft.length > 0)
+        // Restore a stashed orphan only if present — never clear here, or a fresh
+        // server-detected orphan would be wiped when storage is blocked (private mode).
+        // Stale orphans from a previous session are cleared at the switch points below.
+        const stashedOrphan = readStash(orphanKey(threadId))
+        if (stashedOrphan) setOrphanPrompt(stashedOrphan)
+    }, [threadId, historyLoading])
+
     // ---- session actions ----
     // On mobile the sidebar is an overlay, so close it after an action that
     // reveals the conversation.
     const closeSidebarOnMobile = () => { if (isMobile) setSidebarOpen(false) }
-    const handleNewChat = () => { setHistoryLoading(false); setThreadId(crypto.randomUUID()); syncUrl(null); closeSidebarOnMobile() }
-    const handleSelectSession = (id: string) => { closeSidebarOnMobile(); if (id === threadId) return; setHistoryLoading(true); setThreadId(id); syncUrl(id) }
+    const handleNewChat = () => { setOrphanPrompt(null); setHistoryLoading(false); setThreadId(crypto.randomUUID()); syncUrl(null); closeSidebarOnMobile() }
+    const handleSelectSession = (id: string) => { closeSidebarOnMobile(); if (id === threadId) return; setOrphanPrompt(null); setHistoryLoading(true); setThreadId(id); syncUrl(id) }
     const handleDeleteSession = (id: string) => { sendMessage(JSON.stringify({ type: "delete_session", session_id: id })); setConfirmDeleteId(null) }
     const handleSignOut = async () => { await supabase.auth.signOut(); router.push("/login"); router.refresh() }
 
@@ -509,8 +569,28 @@ export default function Page() {
 
     const handleInputChange = () => {
         const el = inputRef.current
-        const hasChar = ((el?.innerText ?? "").replace(/\n/g, "")).length > 0
+        const text = el?.innerText ?? ""
+        const hasChar = (text.replace(/\n/g, "")).length > 0
         setIsTextPresent(hasChar)
+        // Persist the unsent text per session so a reload / re-login restores it.
+        if (hasChar) writeStash(draftKey(threadId), text)
+        else clearStash(draftKey(threadId))
+    }
+
+    // Resend an orphaned prompt: send it fresh (re-saves + re-runs the pipeline) and
+    // drop the pending bubble. Discard just clears it — the DB row is already gone.
+    const handleResendOrphan = () => {
+        if (!orphanPrompt || loading || !isConnected || compactionBlocking) return
+        const text = orphanPrompt
+        sendMessage(JSON.stringify({ type: "prompt", session_id: threadId, message: text }))
+        syncUrl(threadId, "replace")
+        dispatch({ type: "send", message: { id: crypto.randomUUID(), role: "user", content: text }, phrase: pickPhrase() })
+        setOrphanPrompt(null)
+        clearStash(orphanKey(threadId))
+    }
+    const handleDiscardOrphan = () => {
+        setOrphanPrompt(null)
+        clearStash(orphanKey(threadId))
     }
 
     const handleSend = () => {
@@ -522,6 +602,7 @@ export default function Page() {
         dispatch({ type: "send", message: { id: crypto.randomUUID(), role: "user", content: text }, phrase: pickPhrase() })
         if (inputRef.current) inputRef.current.innerText = ""
         setIsTextPresent(false)
+        clearStash(draftKey(threadId))
     }
 
     const handleCompactConfirm = () => {
@@ -974,6 +1055,38 @@ export default function Page() {
                                     </div>
                                 )
                             ))}
+
+                            {/* Orphaned prompt: an earlier turn whose answer never arrived.
+                                Sits where the user message naturally would, with resend/discard. */}
+                            {orphanPrompt && !loading && (
+                                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 7, animation: "hoc-fade .3s ease both" }}>
+                                    <UserBubble content={orphanPrompt} />
+                                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                        <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--muted)" }}>No response received</span>
+                                        <button
+                                            type="button"
+                                            onClick={handleResendOrphan}
+                                            disabled={!isConnected || compactionBlocking}
+                                            aria-label="Resend prompt"
+                                            title="Resend"
+                                            style={{ display: "flex", alignItems: "center", gap: 5, background: "#fff", border: "1px solid var(--border)", borderRadius: 999, padding: "5px 11px", cursor: isConnected && !compactionBlocking ? "pointer" : "default", opacity: isConnected && !compactionBlocking ? 1 : 0.5, fontFamily: "var(--font)", fontSize: 12, fontWeight: 700, color: "var(--green-800)", boxShadow: "var(--shadow-sm)" }}
+                                        >
+                                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                                            Resend
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleDiscardOrphan}
+                                            aria-label="Discard prompt"
+                                            title="Discard"
+                                            style={{ display: "flex", alignItems: "center", gap: 5, background: "transparent", border: "1px solid var(--border)", borderRadius: 999, padding: "5px 11px", cursor: "pointer", fontFamily: "var(--font)", fontSize: 12, fontWeight: 700, color: "var(--muted)" }}
+                                        >
+                                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                                            Discard
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
 
                             {loading && loadingIndicator}
 

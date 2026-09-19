@@ -730,11 +730,25 @@ async def websocket_endpoint(
             # instead of showing a prompt with no reply; the answer itself arrives over
             # the pub/sub channel when it lands.
             inflight = await is_pipeline_inflight(requested_session_id)
+            # Orphaned prompt: not inflight, yet the last turn is an unanswered user
+            # message (the answer pipeline crashed before persisting). Lift it out of
+            # the DB and hand it back separately so the client can offer resend/discard
+            # instead of showing a dead half-turn. clear_history stops the deleted turn
+            # from lingering in the agent's context cache.
+            orphan_prompt = None
+            if not inflight and messages and messages[-1].get("role") == "user":
+                orphan_text = await chat_store.delete_trailing_user_message(requested_session_id, user_id)
+                if orphan_text is not None:
+                    messages = messages[:-1]
+                    await clear_history(requested_session_id)
+                    orphan_prompt = {"message": orphan_text}
+                    log.info("ws.orphan_prompt.recovered", session_id=requested_session_id, user_id=user_id)
             await safe_send({
                 "type": "chat_history",
                 "session_id": requested_session_id,
                 "messages": messages,
                 "inflight": inflight,
+                "orphan_prompt": orphan_prompt,
                 "compaction": {
                     "phase": compaction.get("phase", "idle"),
                     "message": compaction.get("message"),
