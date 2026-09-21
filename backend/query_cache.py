@@ -33,7 +33,7 @@ from config.valkey_client import get_valkey_sync
 
 # `!= "false"` so the feature is on unless explicitly disabled.
 ENABLED = os.getenv("QCACHE_ENABLED", "true").lower() != "false"
-SHADOW = os.getenv("QCACHE_SHADOW", "true").lower() != "false"
+SHADOW = os.getenv("QCACHE_SHADOW", "false").lower() != "false"
 TTL_S = int(os.getenv("QCACHE_TTL_S", str(14 * 24 * 3600)))  # 14 days
 
 _VERSION_KEY = "qcache:version"

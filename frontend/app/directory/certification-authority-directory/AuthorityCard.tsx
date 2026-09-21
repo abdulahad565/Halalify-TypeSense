@@ -38,40 +38,44 @@ export default function AuthorityCard({
       aria-label={`View details for ${a.name}`}
       className="animate-ho-rise relative flex min-w-0 cursor-pointer flex-col gap-[15px] rounded-[18px] border border-ho-green/10 bg-white p-5 pb-[18px] text-left transition-[transform,box-shadow,border-color] duration-180 hover:-translate-y-1 hover:border-ho-gold/65 hover:shadow-[0_20px_40px_-22px_rgba(12,56,38,.4)] sm:p-[22px] sm:pb-[18px]"
     >
-      <div
-        className="absolute top-[18px] right-[18px] rounded-[20px] px-[9px] py-1 text-[10.5px] font-bold tracking-[.03em] whitespace-nowrap"
-        style={{ background: ts.bg, color: ts.fg }}
-      >
-        {ts.label}
-      </div>
-
-      <div className="flex items-center gap-[13px]">
-        <div
-          className={`flex h-14 w-[52px] flex-none items-center justify-center bg-linear-[155deg,#155B3C,#0D3D2A] ${HEX_CLIP}`}
-        >
-          <span
-            className={`${codeSize(code)} plus-jakarta-sans-800 leading-none tracking-[-.02em] text-ho-gold-lt`}
+      <div className="flex items-start justify-between gap-2.5">
+        <div className="flex items-center gap-[13px] min-w-0 flex-1">
+          <div
+            className={`flex h-14 w-[52px] flex-none items-center justify-center bg-linear-[155deg,#155B3C,#0D3D2A] ${HEX_CLIP}`}
           >
-            {code}
-          </span>
-        </div>
-        <div className="min-w-0 pr-14">
-          <div className="plus-jakarta-sans-700 truncate text-[17.5px] leading-[1.15] tracking-[-.02em] text-ho-ink-2">
-            {a.name}
-          </div>
-          <div className="mt-[5px] flex items-center gap-[7px]">
             <span
-              className="h-2 w-2 flex-none rounded-full"
-              style={{ background: dotFor(a.region) }}
-            />
-            <span className="plus-jakarta-sans-600 text-[12.5px] text-ho-slate">
-              {a.country}
-            </span>
-            <span className="text-[11.5px] text-ho-faint-2">·</span>
-            <span className="plus-jakarta-sans-500 text-[12px] text-ho-faint">
-              {a.region}
+              className={`${codeSize(code)} plus-jakarta-sans-800 leading-none tracking-[-.02em] text-ho-gold-lt`}
+            >
+              {code}
             </span>
           </div>
+          <div className="min-w-0 flex-1">
+            <div className="plus-jakarta-sans-700 truncate text-[17px] sm:text-[17.5px] leading-[1.2] tracking-[-.02em] text-ho-ink-2">
+              {a.name}
+            </div>
+            <div className="mt-[5px] flex flex-wrap items-center gap-x-[6px] gap-y-0.5">
+              <div className="flex items-center gap-[6px] min-w-0 max-w-full">
+                <span
+                  className="h-2 w-2 flex-none rounded-full"
+                  style={{ background: dotFor(a.region) }}
+                />
+                <span className="plus-jakarta-sans-600 text-[12px] sm:text-[12.5px] text-ho-slate truncate max-w-[130px] sm:max-w-none">
+                  {a.country}
+                </span>
+              </div>
+              <span className="text-[11.5px] text-ho-faint-2">·</span>
+              <span className="plus-jakarta-sans-500 text-[11.5px] sm:text-[12px] text-ho-faint flex-none">
+                {a.region}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div
+          className="flex-none rounded-[20px] px-[9px] py-1 text-[10.5px] font-bold tracking-[.03em] whitespace-nowrap self-start"
+          style={{ background: ts.bg, color: ts.fg }}
+        >
+          {ts.label}
         </div>
       </div>
 

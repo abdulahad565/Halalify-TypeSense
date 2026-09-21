@@ -19,6 +19,7 @@ from barcode_lookup import (
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel as PydanticBaseModel
 from agents.langgraph_agent.main_langgraph_agent import stream_agent, compact_session
+from llms.vision_llm import invoke_llm_with_image, close_vlms
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Header
 from config.supabase_client import get_supabase
 from config.valkey_client import get_valkey, close_valkey
@@ -38,7 +39,7 @@ from rate_limit import (
 )
 from langchain.messages import HumanMessage, AIMessage, SystemMessage
 from langchain_core.messages.utils import count_tokens_approximately
-
+from barcode_lookup import normalize_barcode, query_primary_db, project_product
 load_dotenv(override=True)
 
 # Base token count that triggers a compaction prompt (~30% of the model context).
@@ -143,7 +144,6 @@ MSG_RATE_REASON = "You're sending messages too quickly. Please retry shortly."
 LLM_BUSY_REASON = "We're experiencing high load right now. Please retry shortly."
 USER_LLM_REASON = "You've reached your request limit for now. Please wait a moment."
 
-
 def _history_to_messages(history: list[dict], summary: str = "") -> list:
     """Agent-form {id, role, content} entries -> LangChain messages for the agent.
     A non-empty rolling summary is prepended as a SystemMessage so it flows into
@@ -156,7 +156,6 @@ def _history_to_messages(history: list[dict], summary: str = "") -> list:
         for m in history
     )
     return messages
-
 
 def _rows_to_history(rows: list[dict]) -> list[dict]:
     """DB message rows -> agent-form history. Each entry carries its DB id so a
@@ -745,11 +744,25 @@ async def websocket_endpoint(
             # instead of showing a prompt with no reply; the answer itself arrives over
             # the pub/sub channel when it lands.
             inflight = await is_pipeline_inflight(requested_session_id)
+            # Orphaned prompt: not inflight, yet the last turn is an unanswered user
+            # message (the answer pipeline crashed before persisting). Lift it out of
+            # the DB and hand it back separately so the client can offer resend/discard
+            # instead of showing a dead half-turn. clear_history stops the deleted turn
+            # from lingering in the agent's context cache.
+            orphan_prompt = None
+            if not inflight and messages and messages[-1].get("role") == "user":
+                orphan_text = await chat_store.delete_trailing_user_message(requested_session_id, user_id)
+                if orphan_text is not None:
+                    messages = messages[:-1]
+                    await clear_history(requested_session_id)
+                    orphan_prompt = {"message": orphan_text}
+                    log.info("ws.orphan_prompt.recovered", session_id=requested_session_id, user_id=user_id)
             await safe_send({
                 "type": "chat_history",
                 "session_id": requested_session_id,
                 "messages": messages,
                 "inflight": inflight,
+                "orphan_prompt": orphan_prompt,
                 "compaction": {
                     "phase": compaction.get("phase", "idle"),
                     "message": compaction.get("message"),

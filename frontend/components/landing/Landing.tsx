@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import Link from "next/link"
 import { motion, AnimatePresence } from "framer-motion"
 
@@ -35,8 +35,9 @@ const TRADE = "/directory/trade-intelligence"
 const INGREDIENTS = "/directory/ingredient-database"
 const MARKET = "/directory/market-intelligence"
 
-// Shared nav links (desktop bar + mobile hamburger overlay use the same list).
+// Shared nav links (mobile hamburger overlay uses this list).
 const NAV_LINKS: { label: string; href: string }[] = [
+  { label: "Home", href: "/" },
   { label: "Directory", href: CERT_DIR },
   { label: "Business", href: BIZ_DIR },
   { label: "Ingredients", href: INGREDIENTS },
@@ -62,8 +63,8 @@ const FOOTER_ROUTES: Record<string, string> = {
 }
 
 const overline = { fontSize: 11, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase" as const, color: "var(--gold-600)" }
-const h2Style = { margin: "14px 0 0", fontSize: "clamp(30px, 3.6vw, 44px)", lineHeight: 1.1, fontWeight: 800, letterSpacing: "-0.022em", color: "var(--text-heading)" }
-const sectionInner = { maxWidth: 1200, margin: "0 auto", padding: "96px 32px" }
+const h2Style = { margin: "14px 0 0", fontSize: "clamp(26px, 3.6vw, 44px)", lineHeight: 1.1, fontWeight: 800, letterSpacing: "-0.022em", color: "var(--text-heading)" }
+const sectionInner = { maxWidth: 1200, margin: "0 auto", padding: "clamp(48px, 6vw, 96px) clamp(16px, 3.5vw, 32px)" }
 
 type BadgeVariant = "verified" | "warning" | "danger"
 
@@ -85,6 +86,7 @@ type Profile = { name: string; email: string; avatarUrl: string }
 export default function Landing({ profile = null }: { profile?: Profile | null }) {
   const rootRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
+  const pathname = usePathname()
 
   // "Get started" goes straight to the app when already signed in; otherwise to
   // login, carrying ?next=/chat so the user lands on the chat after signing in.
@@ -235,11 +237,30 @@ export default function Landing({ profile = null }: { profile?: Profile | null }
                 </button>
               </div>
               <nav style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
-                {NAV_LINKS.map((l) => (
-                  <Link key={l.href} href={l.href} onClick={() => setNavOpen(false)} style={{ padding: "18px 24px", fontSize: 20, fontWeight: 700, letterSpacing: "-0.01em", color: "var(--green-900)", borderBottom: "1px solid var(--border-subtle)" }}>
-                    {l.label}
-                  </Link>
-                ))}
+                {NAV_LINKS.map((l) => {
+                  const isActive = l.href === "/" ? pathname === "/" : (pathname === l.href || pathname?.startsWith(l.href))
+                  return (
+                    <Link
+                      key={l.href}
+                      href={l.href}
+                      onClick={() => setNavOpen(false)}
+                      style={{
+                        padding: "18px 24px",
+                        fontSize: 20,
+                        fontWeight: 700,
+                        letterSpacing: "-0.01em",
+                        color: isActive ? "var(--gold-600)" : "var(--green-900)",
+                        background: isActive ? "rgba(201, 162, 72, 0.08)" : "transparent",
+                        borderLeft: isActive ? "4px solid var(--gold-500)" : "4px solid transparent",
+                        borderBottom: "1px solid var(--border-subtle)",
+                        display: "block",
+                        textDecoration: "none",
+                      }}
+                    >
+                      {l.label}
+                    </Link>
+                  )
+                })}
                 {!profile && (
                   <Link href="/login" onClick={() => setNavOpen(false)} style={{ padding: "18px 24px", fontSize: 20, fontWeight: 700, letterSpacing: "-0.01em", color: "var(--green-900)", borderBottom: "1px solid var(--border-subtle)" }}>
                     Sign in
@@ -261,7 +282,7 @@ export default function Landing({ profile = null }: { profile?: Profile | null }
         <section id="top" className="hl-on-dark" style={{ position: "relative", background: "radial-gradient(120% 120% at 80% -10%, #12583a 0%, var(--green-800) 42%, var(--green-900) 100%)", color: "var(--cream-50)", overflow: "hidden" }}>
           <div aria-hidden="true" style={{ position: "absolute", inset: 0, backgroundImage: "radial-gradient(color-mix(in srgb, var(--cream-50) 6%, transparent) 1px, transparent 1px)", backgroundSize: "26px 26px", opacity: 0.5 }} />
           <div aria-hidden="true" style={{ position: "absolute", top: -140, right: -120, width: 520, height: 520, borderRadius: "var(--radius-pill)", background: "radial-gradient(circle, color-mix(in srgb, var(--gold-500) 22%, transparent) 0%, transparent 68%)" }} />
-          <div className="hl-hero-grid" style={{ position: "relative", maxWidth: 1200, margin: "0 auto", padding: "84px 32px 76px", display: "grid", gridTemplateColumns: "1.05fr 0.95fr", gap: 56, alignItems: "center" }}>
+          <div className="hl-hero-grid" style={{ position: "relative", maxWidth: 1200, margin: "0 auto", padding: "clamp(48px, 6vw, 84px) clamp(16px, 3.5vw, 32px) clamp(44px, 5vw, 76px)" }}>
             <div>
               <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "7px 16px", borderRadius: "var(--radius-pill)", border: "1px solid transparent", background: "var(--gold-500)", fontSize: 11, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--green-900)", boxShadow: "var(--shadow-sm)" }}>
                 Islamic Chamber of Commerce &amp; Development
@@ -338,7 +359,7 @@ export default function Landing({ profile = null }: { profile?: Profile | null }
               <p style={{ margin: "16px 0 0", fontSize: 18, lineHeight: 1.6, color: "var(--text-muted)" }}>Not a chatbot. An intelligence layer over the global repository that verifies products, decodes ingredients, and cites every source behind its answer.</p>
             </div>
 
-            <div className="hl-split" data-reveal="" style={{ marginTop: 44, display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: 24, alignItems: "start" }}>
+            <div className="hl-split" data-reveal="" style={{ marginTop: 44 }}>
               <Card padded={false} style={{ overflow: "hidden" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "16px 22px", borderBottom: "1px solid var(--border-subtle)", background: "var(--cream-100)" }}>
                   <div style={{ width: 30, height: 30, borderRadius: 9, background: "var(--green-800)", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -420,7 +441,7 @@ export default function Landing({ profile = null }: { profile?: Profile | null }
               <p style={{ maxWidth: 340, fontSize: 15, lineHeight: 1.6, color: "var(--text-muted)" }}>Halal status, category, companies and certifying authority — every result on a single verified card.</p>
             </div>
 
-            <div data-reveal="" style={{ marginTop: 40, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 20 }}>
+            <div data-reveal="" style={{ marginTop: 40, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))", gap: 20 }}>
               {products.map((p) => {
                 const st = productStatusStyle(p.halal_status)
                 const cats = [p.category_l1, p.category_l2].filter(Boolean)
@@ -489,20 +510,21 @@ export default function Landing({ profile = null }: { profile?: Profile | null }
                 {repoData.map((r) => (
                   <div
                     key={r.name}
-                    className="hl-chip"
-                    style={{ display: "flex", alignItems: "center", gap: 16, padding: "16px 20px", borderBottom: "1px solid var(--border-subtle)", cursor: "pointer" }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = "var(--cream-100)" }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent" }}
+                    className="hl-repo-row"
                   >
-                    <div style={{ flex: "0 0 auto", width: 42, height: 42, borderRadius: 11, background: "var(--cream-100)", border: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <div style={{ flex: "0 0 auto", width: 40, height: 40, borderRadius: 11, background: "var(--cream-100)", border: "1px solid var(--border-subtle)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                       <Icon name={r.icon} size={19} color="var(--green-800)" />
                     </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 15, fontWeight: 800, color: "var(--green-900)" }}>{r.name}</div>
-                      <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 2 }}>{r.meta}</div>
+                    <div className="hl-repo-row-content">
+                      <div className="hl-repo-row-text">
+                        <div style={{ fontSize: 15, fontWeight: 800, color: "var(--green-900)", lineHeight: 1.3 }}>{r.name}</div>
+                        <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 2, lineHeight: 1.4 }}>{r.meta}</div>
+                      </div>
+                      <div className="hl-repo-row-meta">
+                        <Badge variant={r.badge as BadgeVariant} size="sm">{r.statusLabel}</Badge>
+                        <span style={{ fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap" }}>{r.updated}</span>
+                      </div>
                     </div>
-                    <Badge variant={r.badge as BadgeVariant} size="sm">{r.statusLabel}</Badge>
-                    <span style={{ fontSize: 12, color: "var(--text-muted)", minWidth: 90, textAlign: "right" }}>{r.updated}</span>
                   </div>
                 ))}
               </div>
@@ -530,7 +552,7 @@ export default function Landing({ profile = null }: { profile?: Profile | null }
               <h2 style={{ ...h2Style, fontSize: "clamp(28px, 3.4vw, 42px)", color: "var(--white)" }}>Point. Scan. Understand.</h2>
               <p style={{ margin: "14px 0 0", maxWidth: 520, fontSize: 17, lineHeight: 1.6, color: "var(--text-on-dark-muted)" }}>Capture any label and the scanner reads every ingredient, cross&#8209;references the repository, and returns a confidence&#8209;scored verdict with reasoning.</p>
 
-              <div style={{ marginTop: 28, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+              <div style={{ marginTop: 28, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(240px, 100%), 1fr))", gap: 24 }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   {scanSteps.map((st) => (
                     <div key={st.title} style={{ display: "flex", gap: 12, alignItems: "flex-start", padding: "8px 0" }}>
@@ -560,29 +582,29 @@ export default function Landing({ profile = null }: { profile?: Profile | null }
         </section>
 
         {/* ============ MOBILE ============ */}
-        <section id="mobile" style={{ background: "var(--white)", borderTop: "1px solid var(--border-subtle)" }}>
-          <div className="hl-split" style={{ maxWidth: 1200, margin: "0 auto", padding: "96px 32px", display: "grid", gridTemplateColumns: "1fr 0.85fr", gap: 56, alignItems: "stretch" }}>
+        <section id="mobile" style={{ background: "var(--white)", borderTop: "1px solid var(--border-subtle)", overflow: "hidden" }}>
+          <div className="hl-mobile-split" style={{ maxWidth: 1200, margin: "0 auto", padding: "clamp(48px, 6vw, 96px) clamp(16px, 3.5vw, 32px)" }}>
             <div data-reveal="">
               <div style={overline}>Mobile Experience</div>
               <h2 style={h2Style}>Halal clarity, in your pocket.</h2>
               <p style={{ margin: "16px 0 0", maxWidth: 500, fontSize: 18, lineHeight: 1.6, color: "var(--text-muted)" }}>Scan, ask and discover on the go. The full intelligence of the platform, designed for the moment you&rsquo;re standing in the aisle.</p>
-              <div style={{ marginTop: 28, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, maxWidth: 520 }}>
+              <div className="hl-mobile-feature-grid" style={{ marginTop: 28 }}>
                 {mobileFeatures.map((m) => (
-                  <div key={m.label} style={{ display: "flex", alignItems: "center", gap: 12, padding: 14, borderRadius: "var(--radius-md)", border: "1px solid var(--border-subtle)", background: "var(--cream-50)" }}>
+                  <div key={m.label} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: "var(--radius-md)", border: "1px solid var(--border-subtle)", background: "var(--cream-50)" }}>
                     <div style={{ flex: "0 0 auto", width: 38, height: 38, borderRadius: 10, background: "color-mix(in srgb, var(--green-800) 8%, transparent)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                       <Icon name={m.icon} size={19} color="var(--green-800)" />
                     </div>
-                    <div>
-                      <div style={{ fontSize: 14.5, fontWeight: 800, color: "var(--green-900)" }}>{m.label}</div>
-                      <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 1 }}>{m.desc}</div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: "var(--green-900)" }}>{m.label}</div>
+                      <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 1 }}>{m.desc}</div>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
-            <div data-reveal="" style={{ alignSelf: "stretch", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div data-reveal="" className="hl-mockup-wrap">
               {/* CSS phone mockup — crisp at any size, mirrors the chat app UI */}
-              <div style={{ position: "relative", width: 288, height: 588, borderRadius: 46, background: "#071f14", padding: 12, boxShadow: "var(--shadow-lg)", border: "1px solid color-mix(in srgb, var(--cream-50) 14%, transparent)" }}>
+              <div className="hl-phone-mockup">
                 <div style={{ position: "relative", width: "100%", height: "100%", borderRadius: 36, overflow: "hidden", background: "var(--cream-50)", display: "flex", flexDirection: "column" }}>
                   {/* notch */}
                   <div style={{ position: "absolute", top: 10, left: "50%", transform: "translateX(-50%)", width: 92, height: 20, borderRadius: 999, background: "#050f0a", zIndex: 2 }} />
@@ -592,25 +614,56 @@ export default function Landing({ profile = null }: { profile?: Profile | null }
                     <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: "-0.02em", color: "var(--green-900)" }}>Halal<span style={{ color: "var(--gold-600)" }}>One</span></div>
                   </div>
                   {/* conversation */}
-                  <div style={{ flex: 1, overflow: "hidden", padding: "14px 14px 0", display: "flex", flexDirection: "column", gap: 14 }}>
-                    <div style={{ alignSelf: "flex-end", maxWidth: "82%", background: "color-mix(in srgb, var(--green-700) 9%, transparent)", border: "1px solid color-mix(in srgb, var(--green-700) 20%, transparent)", color: "var(--green-900)", borderRadius: "14px 14px 4px 14px", padding: "9px 12px", fontSize: 12.5, lineHeight: 1.5 }}>Is Oreo halal?</div>
+                  <div className="hl-phone-conversation" style={{ flex: 1, overflowY: "auto", padding: "12px 14px 6px", display: "flex", flexDirection: "column", gap: 10, scrollbarWidth: "none", msOverflowStyle: "none" }}>
+                    <div style={{ alignSelf: "flex-end", maxWidth: "82%", background: "color-mix(in srgb, var(--green-700) 9%, transparent)", border: "1px solid color-mix(in srgb, var(--green-700) 20%, transparent)", color: "var(--green-900)", borderRadius: "14px 14px 4px 14px", padding: "8px 12px", fontSize: 12, lineHeight: 1.45 }}>Is Oreo halal?</div>
                     <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
                       <div style={{ flex: "0 0 auto", width: 24, height: 24, borderRadius: 7, background: "linear-gradient(150deg,#0F4B2E,#07351F)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                         <svg width="13" height="13" viewBox="-16 -16 32 32" aria-hidden="true"><path d="M0 -13 L11.3 -6.5 L11.3 6.5 L0 13 L-11.3 6.5 L-11.3 -6.5 Z" fill="none" stroke="var(--gold-500)" strokeWidth="2.8" strokeLinejoin="round" /><path d="M-5 0.5 L-1.3 4.6 L5.8 -4.5" fill="none" stroke="var(--cream-50)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.55, color: "var(--ink, #222)" }}>Generally yes — Oreo Original is certified halal in several markets.</p>
-                        <div style={{ marginTop: 10, background: "var(--white)", border: "1px solid var(--border-subtle)", borderLeftWidth: 3, borderLeftColor: "var(--green-700)", borderRadius: 11, padding: "11px 12px", boxShadow: "var(--shadow-sm)" }}>
+                        <p style={{ margin: 0, fontSize: 12, lineHeight: 1.5, color: "var(--ink, #222)" }}>Generally yes — Oreo Original is certified halal in several markets.</p>
+                        <div style={{ marginTop: 8, background: "var(--white)", border: "1px solid var(--border-subtle)", borderLeftWidth: 3, borderLeftColor: "var(--green-700)", borderRadius: 10, padding: "10px 11px", boxShadow: "var(--shadow-sm)" }}>
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                            <div style={{ fontSize: 12.5, fontWeight: 800, color: "var(--green-900)", lineHeight: 1.25 }}>Oreo Original Cookies</div>
-                            <span style={{ flex: "0 0 auto", display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 999, fontSize: 9, fontWeight: 800, background: "color-mix(in srgb, var(--green-700) 12%, transparent)", color: "var(--green-700)", border: "1px solid color-mix(in srgb, var(--green-700) 30%, transparent)" }}><span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--green-700)" }} />Halal</span>
+                            <div style={{ fontSize: 12, fontWeight: 800, color: "var(--green-900)", lineHeight: 1.25 }}>Oreo Original Cookies</div>
+                            <span style={{ flex: "0 0 auto", display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 7px", borderRadius: 999, fontSize: 8.5, fontWeight: 800, background: "color-mix(in srgb, var(--green-700) 12%, transparent)", color: "var(--green-700)", border: "1px solid color-mix(in srgb, var(--green-700) 30%, transparent)" }}><span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--green-700)" }} />Halal</span>
                           </div>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 8 }}>
-                            <span style={{ padding: "2px 8px", borderRadius: 6, fontSize: 9, fontWeight: 700, background: "var(--cream-100)", color: "var(--text-muted)", border: "1px solid var(--border-subtle)" }}>Food</span>
-                            <span style={{ padding: "2px 8px", borderRadius: 6, fontSize: 9, fontWeight: 700, background: "var(--cream-100)", color: "var(--text-muted)", border: "1px solid var(--border-subtle)" }}>Biscuits</span>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+                            <span style={{ padding: "2px 7px", borderRadius: 5, fontSize: 8.5, fontWeight: 700, background: "var(--cream-100)", color: "var(--text-muted)", border: "1px solid var(--border-subtle)" }}>Food</span>
+                            <span style={{ padding: "2px 7px", borderRadius: 5, fontSize: 8.5, fontWeight: 700, background: "var(--cream-100)", color: "var(--text-muted)", border: "1px solid var(--border-subtle)" }}>Biscuits</span>
+                            <span style={{ padding: "2px 7px", borderRadius: 5, fontSize: 8.5, fontWeight: 700, background: "color-mix(in srgb, var(--green-700) 8%, transparent)", color: "var(--green-800)", border: "1px solid color-mix(in srgb, var(--green-700) 20%, transparent)" }}>JAKIM / MUI</span>
                           </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 9, paddingTop: 9, borderTop: "1px solid var(--cream-100)", fontSize: 9, fontWeight: 700, color: "var(--green-700)" }}>
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 12l2 2 4-4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" /></svg>
+                          <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 8, paddingTop: 7, borderTop: "1px solid var(--cream-100)", fontSize: 8.5, fontWeight: 700, color: "var(--green-700)" }}>
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 12l2 2 4-4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" /></svg>
+                            Verified &middot; Sourced from database
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Follow-up question & answer */}
+                    <div style={{ alignSelf: "flex-end", maxWidth: "82%", background: "color-mix(in srgb, var(--green-700) 9%, transparent)", border: "1px solid color-mix(in srgb, var(--green-700) 20%, transparent)", color: "var(--green-900)", borderRadius: "14px 14px 4px 14px", padding: "8px 12px", fontSize: 12, lineHeight: 1.45 }}>
+                      Is Skittles halal?
+                    </div>
+                    <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                      <div style={{ flex: "0 0 auto", width: 24, height: 24, borderRadius: 7, background: "linear-gradient(150deg,#0F4B2E,#07351F)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <svg width="13" height="13" viewBox="-16 -16 32 32" aria-hidden="true"><path d="M0 -13 L11.3 -6.5 L11.3 6.5 L0 13 L-11.3 6.5 L-11.3 -6.5 Z" fill="none" stroke="var(--gold-500)" strokeWidth="2.8" strokeLinejoin="round" /><path d="M-5 0.5 L-1.3 4.6 L5.8 -4.5" fill="none" stroke="var(--cream-50)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ margin: 0, fontSize: 12, lineHeight: 1.5, color: "var(--ink, #222)" }}>
+                          Generally yes — Skittles Original is certified halal in several markets.
+                        </p>
+                        <div style={{ marginTop: 8, background: "var(--white)", border: "1px solid var(--border-subtle)", borderLeftWidth: 3, borderLeftColor: "var(--green-700)", borderRadius: 10, padding: "10px 11px", boxShadow: "var(--shadow-sm)" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                            <div style={{ fontSize: 12, fontWeight: 800, color: "var(--green-900)", lineHeight: 1.25 }}>Skittles Original Candy</div>
+                            <span style={{ flex: "0 0 auto", display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 7px", borderRadius: 999, fontSize: 8.5, fontWeight: 800, background: "color-mix(in srgb, var(--green-700) 12%, transparent)", color: "var(--green-700)", border: "1px solid color-mix(in srgb, var(--green-700) 30%, transparent)" }}><span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--green-700)" }} />Halal</span>
+                          </div>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+                            <span style={{ padding: "2px 7px", borderRadius: 5, fontSize: 8.5, fontWeight: 700, background: "var(--cream-100)", color: "var(--text-muted)", border: "1px solid var(--border-subtle)" }}>Food</span>
+                            <span style={{ padding: "2px 7px", borderRadius: 5, fontSize: 8.5, fontWeight: 700, background: "var(--cream-100)", color: "var(--text-muted)", border: "1px solid var(--border-subtle)" }}>Candy</span>
+                            <span style={{ padding: "2px 7px", borderRadius: 5, fontSize: 8.5, fontWeight: 700, background: "color-mix(in srgb, var(--green-700) 8%, transparent)", color: "var(--green-800)", border: "1px solid color-mix(in srgb, var(--green-700) 20%, transparent)" }}>JAKIM / HFCE</span>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 8, paddingTop: 7, borderTop: "1px solid var(--cream-100)", fontSize: 8.5, fontWeight: 700, color: "var(--green-700)" }}>
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 12l2 2 4-4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" /></svg>
                             Verified &middot; Sourced from database
                           </div>
                         </div>
@@ -706,8 +759,8 @@ export default function Landing({ profile = null }: { profile?: Profile | null }
 
         {/* ============ CTA BAND ============ */}
         <section className="hl-on-dark" style={{ background: "var(--green-900)", color: "var(--cream-50)" }}>
-          <div style={{ maxWidth: 1000, margin: "0 auto", padding: "84px 32px", textAlign: "center" }}>
-            <h2 style={{ margin: 0, fontSize: "clamp(30px, 4vw, 46px)", lineHeight: 1.08, fontWeight: 800, letterSpacing: "-0.025em", color: "var(--white)", textWrap: "balance" }}>Bring verified halal intelligence to your organization.</h2>
+          <div style={{ maxWidth: 1000, margin: "0 auto", padding: "clamp(48px, 6vw, 84px) clamp(16px, 3.5vw, 32px)", textAlign: "center" }}>
+            <h2 style={{ margin: 0, fontSize: "clamp(26px, 4vw, 46px)", lineHeight: 1.08, fontWeight: 800, letterSpacing: "-0.025em", color: "var(--white)", textWrap: "balance" }}>Bring verified halal intelligence to your organization.</h2>
             <p style={{ margin: "18px auto 0", maxWidth: 560, fontSize: 18, lineHeight: 1.6, color: "var(--text-on-dark-muted)" }}>For enterprises, certification bodies and institutions ready to build on the world&rsquo;s halal record.</p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 12, justifyContent: "center", marginTop: 30 }}>
               <Button variant="gold" size="lg" href={APP}>Request a demo</Button>
@@ -718,8 +771,8 @@ export default function Landing({ profile = null }: { profile?: Profile | null }
 
         {/* ============ FOOTER ============ */}
         <footer className="hl-on-dark" style={{ background: "var(--green-800)", color: "var(--cream-50)" }}>
-          <div style={{ maxWidth: 1200, margin: "0 auto", padding: "64px 32px 40px" }}>
-            <div className="hl-hero-grid" style={{ display: "grid", gridTemplateColumns: "1.4fr repeat(4, 1fr)", gap: 40 }}>
+          <div style={{ maxWidth: 1200, margin: "0 auto", padding: "clamp(48px, 5vw, 64px) clamp(16px, 3.5vw, 32px) 40px" }}>
+            <div className="hl-footer-grid" style={{ display: "grid", gridTemplateColumns: "1.4fr repeat(4, 1fr)", gap: 40 }}>
               <div>
                 <Logo size={26} onDark />
                 <p style={{ margin: "14px 0 0", maxWidth: 280, fontSize: 13.5, lineHeight: 1.6, color: "var(--text-on-dark-muted)" }}>Your trusted gateway to halal intelligence. One platform. Every halal answer.</p>

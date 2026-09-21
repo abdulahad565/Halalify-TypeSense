@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useRef, useEffect, useCallback } from "react"
 import AuthorityCard from "./AuthorityCard"
 import AuthorityModal from "./AuthorityModal"
 import { AUTHORITIES, REGIONS, type Authority, type Region } from "./authorities"
@@ -25,6 +25,34 @@ export default function DirectoryClient() {
   const [region, setRegion] = useState<RegionFilter>("ALL")
   const [type, setType] = useState<TypeFilter>("ALL")
   const [selected, setSelected] = useState<Authority | null>(null)
+
+  const pillsContainerRef = useRef<HTMLDivElement>(null)
+  const [canScrollLeft, setCanScrollLeft] = useState(false)
+  const [canScrollRight, setCanScrollRight] = useState(true)
+  const [isOverflowing, setIsOverflowing] = useState(false)
+
+  const checkScroll = useCallback(() => {
+    const el = pillsContainerRef.current
+    if (!el) return
+    const hasOverflow = el.scrollWidth > el.clientWidth + 2
+    setIsOverflowing(hasOverflow)
+    setCanScrollLeft(el.scrollLeft > 4)
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4)
+  }, [])
+
+  useEffect(() => {
+    checkScroll()
+    const el = pillsContainerRef.current
+    if (!el) return
+    window.addEventListener("resize", checkScroll)
+    return () => window.removeEventListener("resize", checkScroll)
+  }, [checkScroll])
+
+  const scrollPills = (direction: "left" | "right") => {
+    if (!pillsContainerRef.current) return
+    const offset = direction === "left" ? -240 : 240
+    pillsContainerRef.current.scrollBy({ left: offset, behavior: "smooth" })
+  }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -140,32 +168,75 @@ export default function DirectoryClient() {
           (hamburger) and desktop (nav) — hence the responsive offset. */}
       <div className="sticky top-[73px] z-30 mt-[-46px] border-b border-ho-green/8 bg-ho-bg/94 backdrop-blur-sm md:top-[71px]">
         <div className="mx-auto max-w-[1240px] px-5 sm:px-6 md:px-10">
-          <div className="ho-scroll flex gap-2 overflow-x-auto pt-[15px] pb-[13px]">
-            {regionPills.map((pill) => {
-              const active = region === pill.key
-              return (
-                <button
-                  key={pill.key}
-                  type="button"
-                  onClick={() => setRegion(pill.key)}
-                  aria-pressed={active}
-                  className={`plus-jakarta-sans-600 inline-flex flex-none cursor-pointer items-center gap-2 rounded-[9px] border px-[14px] py-2 text-[13px] transition-all duration-150 ${
-                    active
-                      ? "border-ho-green bg-ho-green text-white"
-                      : "border-ho-green/14 bg-white text-ho-slate hover:border-ho-green/30"
-                  }`}
-                >
-                  <span
-                    className="h-2 w-2 rounded-full"
-                    style={{ background: pill.dot }}
-                  />
-                  {pill.label}
-                  <span className="plus-jakarta-sans-500 text-[11.5px] opacity-60">
-                    {pill.count}
-                  </span>
-                </button>
-              )
-            })}
+          <div className="relative flex items-center gap-2 pt-[15px] pb-[13px]">
+            {isOverflowing && (
+              <button
+                type="button"
+                onClick={() => scrollPills("left")}
+                disabled={!canScrollLeft}
+                aria-label="Scroll left"
+                className={`flex-none h-8 w-8 rounded-full border border-ho-green/16 bg-white text-ho-slate shadow-sm flex items-center justify-center transition-all ${
+                  canScrollLeft
+                    ? "cursor-pointer hover:border-ho-green hover:text-ho-green hover:bg-ho-tint text-ho-ink opacity-100"
+                    : "opacity-35 cursor-not-allowed text-ho-muted"
+                }`}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="m15 18-6-6 6-6" />
+                </svg>
+              </button>
+            )}
+
+            <div
+              ref={pillsContainerRef}
+              onScroll={checkScroll}
+              className="flex flex-1 gap-2 overflow-x-auto scroll-smooth py-0.5"
+              style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+            >
+              {regionPills.map((pill) => {
+                const active = region === pill.key
+                return (
+                  <button
+                    key={pill.key}
+                    type="button"
+                    onClick={() => setRegion(pill.key)}
+                    aria-pressed={active}
+                    className={`plus-jakarta-sans-600 inline-flex flex-none cursor-pointer items-center gap-2 rounded-[9px] border px-[14px] py-2 text-[13px] transition-all duration-150 ${
+                      active
+                        ? "border-ho-green bg-ho-green text-white"
+                        : "border-ho-green/14 bg-white text-ho-slate hover:border-ho-green/30"
+                    }`}
+                  >
+                    <span
+                      className="h-2 w-2 rounded-full"
+                      style={{ background: pill.dot }}
+                    />
+                    {pill.label}
+                    <span className="plus-jakarta-sans-500 text-[11.5px] opacity-60">
+                      {pill.count}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+
+            {isOverflowing && (
+              <button
+                type="button"
+                onClick={() => scrollPills("right")}
+                disabled={!canScrollRight}
+                aria-label="Scroll right"
+                className={`flex-none h-8 w-8 rounded-full border border-ho-green/16 bg-white text-ho-slate shadow-sm flex items-center justify-center transition-all ${
+                  canScrollRight
+                    ? "cursor-pointer hover:border-ho-green hover:text-ho-green hover:bg-ho-tint text-ho-ink opacity-100"
+                    : "opacity-35 cursor-not-allowed text-ho-muted"
+                }`}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="m9 18 6-6-6-6" />
+                </svg>
+              </button>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-3 pb-[13px]">

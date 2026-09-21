@@ -41,16 +41,30 @@ export default function AuthorityModal({
 
   return (
     <div
-      onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-label={`${a.name} details`}
-      className="fixed inset-0 z-80 flex items-start justify-center overflow-y-auto bg-[rgba(9,32,21,.55)] px-5 py-10 backdrop-blur-[4px]"
+      className="fixed inset-0 z-80 overflow-y-auto"
     >
+      {/* Sibling backdrop overlay to prevent Safari/WebKit backdrop-blur font rasterization bug */}
       <div
-        onClick={(e) => e.stopPropagation()}
-        className="animate-ho-pop my-auto w-full max-w-[640px] overflow-hidden rounded-[22px] bg-ho-bg shadow-[0_40px_90px_-30px_rgba(6,28,18,.7)]"
-      >
+        onClick={onClose}
+        aria-hidden="true"
+        className="fixed inset-0 bg-[rgba(9,32,21,.6)] backdrop-blur-sm transition-opacity"
+      />
+
+      {/* Modal dialog container */}
+      <div className="relative min-h-full flex items-center justify-center p-4 sm:p-6">
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="relative my-auto w-full max-w-[640px] overflow-hidden rounded-[22px] bg-ho-bg shadow-[0_40px_90px_-30px_rgba(6,28,18,.7)]"
+          style={{
+            WebkitFontSmoothing: "antialiased",
+            MozOsxFontSmoothing: "grayscale",
+            textRendering: "optimizeLegibility",
+            transform: "translateZ(0)",
+          }}
+        >
         <div className="relative bg-[radial-gradient(120%_160%_at_85%_0,#155B3C,#0C3826)] px-5 pt-[26px] pb-6 text-white sm:px-7">
           <button
             type="button"
@@ -221,5 +235,6 @@ export default function AuthorityModal({
         </div>
       </div>
     </div>
-  )
+  </div>
+)
 }

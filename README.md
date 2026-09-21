@@ -83,7 +83,7 @@ cd backend
 python -m venv venv && source venv/bin/activate  # or venv\Scripts\activate on Windows
 pip install -r requirements.txt
 cp .env.example .env   # fill in API keys, Supabase, Valkey, etc.
-uvicorn main:app --reload
+python run.py          # set APP_ENV=development for hot-reload
 ```
 
 **Frontend**

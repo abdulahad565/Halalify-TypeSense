@@ -51,7 +51,7 @@ export default function ProductDetailModal({ product, onClose }: ProductDetailMo
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.96, y: 8 }}
                         transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-                        className="relative w-[80%] max-w-[600px] max-h-[70vh] flex flex-col rounded-2xl border border-white/10 bg-[#0c0c0c] shadow-2xl shadow-black/60 overflow-hidden"
+                        className="relative w-full max-w-[560px] max-h-[85vh] sm:max-h-[80vh] flex flex-col rounded-2xl border border-white/10 bg-[#0c0c0c] shadow-2xl shadow-black/60 overflow-hidden mx-2 sm:mx-0"
                     >
                         <div
                             className={`absolute left-0 top-0 bottom-0 w-[3px] ${statusAccent(product.halal_status ?? "")}`}

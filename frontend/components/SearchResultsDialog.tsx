@@ -45,7 +45,7 @@ const SearchResultsDialog = ({ search_results, tool_name, theme, onClose }: Prop
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.96, y: 8 }}
                 transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-                className={`relative w-full max-w-lg max-h-[40vh] md:max-h-[70vh] flex flex-col rounded-2xl border shadow-2xl overflow-hidden ${isLight ? "bg-white border-black/10" : "bg-[#0c0c0c] border-white/10"
+                className={`relative w-full max-w-lg max-h-[85vh] sm:max-h-[75vh] flex flex-col rounded-2xl border shadow-2xl overflow-hidden ${isLight ? "bg-white border-black/10" : "bg-[#0c0c0c] border-white/10"
                     }`}
             >
                 {/* Header */}

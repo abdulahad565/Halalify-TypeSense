@@ -64,9 +64,11 @@ def _str_list(description: str, field: str | None = None) -> dict:
         )
     return {
         "type": "array",
-        "items": {"anyOf": [{"enum": CANONICAL_LISTS[field]}, {"type": "string"}]}
-        if field
-        else {"type": "string"},
+        "items": (
+            {"anyOf": [{"enum": CANONICAL_LISTS[field]}, {"type": "string"}]}
+            if field
+            else {"type": "string"}
+        ),
         "description": description,
     }
 
@@ -128,11 +130,48 @@ WEB_OUTPUT_SCHEMA = {
         "products": {
             "type": "array",
             "items": _WEB_PRODUCT_SCHEMA,
-            "description": "All matching halal products found across the web sources.",
+            "description": (
+                "Real, identifiable products that the web sources explicitly describe and "
+                "that match the search. Return an EMPTY array if no source describes such a "
+                "product — never a placeholder like 'Unknown product'."
+            ),
         }
     },
     "required": ["products"],
 }
+
+# Sent as Exa's `systemPrompt`: guides how the structured output above is synthesised.
+# Without it, Exa fills the schema even when the sources say nothing useful — e.g.
+# "Unknown product with barcode 03092488324". tools._is_meaningful() still filters
+# the output afterwards; this stops most junk from being generated in the first place.
+
+WEB_SYSTEM_PROMPT = """
+You extract halal product information from web search results for a halal product finder app. Your output is shown to shoppers as product cards, so an empty result is far better than a wrong or empty card.
+
+## When to return a product
+Include a product ONLY if the sources explicitly describe a real, identifiable product that matches the search. A product qualifies only when BOTH are true:
+1. The sources give its actual product name (e.g. "Nestle KitKat 4 Finger Milk Chocolate").
+2. The sources state at least one real fact about it: its brand/manufacturer, its halal status, a halal certification body, or a certificate number.
+
+## When to return nothing
+Return `{"products": []}` when:
+- No source describes a specific product (only lists, forums, unrelated pages, or search-engine noise).
+- The query is a number (barcode, FDA number, certificate number) and no source ties that exact number to a named product.
+- The sources mention the query only in passing, without identifying a product.
+- You would have to guess the product's name.
+
+## Never do this
+- Never invent a placeholder product: no "Unknown product", "Unidentified item", "Product not found", "N/A", or names built from the query such as "Product with barcode 03092488324".
+- Never use the searched number itself as the product name.
+- Never infer or guess a field. Leave a field out unless a source states it. In particular:
+  - `halal_status`: only if a source explicitly says the product is Halal, Haram or Mushbooh. Do not assume a product is halal because it is popular, vegetarian, or sold in a Muslim-majority country.
+  - `cert_bodies` / `cert_numbers`: only if printed in a source, copied exactly.
+  - `companies`: only the brand or manufacturer a source names for that product.
+- Never merge different products into one entry, and never list the same product twice.
+
+## If only some products are real
+Return only the products that meet the rules above and drop the rest. Returning one well-supported product is better than several weak ones.
+""".strip()
 
 
 def stream_web_search(
@@ -163,6 +202,7 @@ def stream_web_search(
         "type": search_type,
         "stream": True,
         "outputSchema": WEB_OUTPUT_SCHEMA,
+        "systemPrompt": WEB_SYSTEM_PROMPT,
         "contents": {"highlights": True},
     }
     headers = {"x-api-key": api_key, "Content-Type": "application/json"}

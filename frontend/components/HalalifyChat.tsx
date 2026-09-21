@@ -753,7 +753,7 @@ export default function HalalifyChat({ threadId, ws, historyLoading, onHistoryLo
             )}
             <AnimatePresence>
                 {detailsOpen && (
-                    <motion.div className={`flex gap-x-4 ${isLight ? 'bg-black/4 border border-black/8 scrollbar-thin-light' : 'bg-white/4 border border-white/8 scrollbar-thin-dark'} rounded-lg max-h-50 overflow-y-auto p-3`}>
+                    <motion.div className={`flex flex-col sm:flex-row gap-4 ${isLight ? 'bg-black/4 border border-black/8 scrollbar-thin-light' : 'bg-white/4 border border-white/8 scrollbar-thin-dark'} rounded-lg max-h-50 overflow-y-auto p-3`}>
                         {/* Tool call dropdown */}
                         <AnimatePresence>
                             {detailsOpen && toolCalls.length > 0 && (
@@ -762,7 +762,7 @@ export default function HalalifyChat({ threadId, ws, historyLoading, onHistoryLo
                                     animate={{ opacity: 1, height: "auto" }}
                                     exit={{ opacity: 0, height: 0 }}
                                     transition={{ duration: 0.2 }}
-                                    className="flex flex-col shrink-0 min-w-1/2 gap-y-2"
+                                    className="flex flex-col shrink-0 sm:min-w-1/2 gap-y-2"
                                 >
                                     <strong className={`mb-1.5 text-sm font-mono ${isLight ? "text-black/50" : "text-white/50"}`}>Tool calls</strong>
                                     <div className="w-full flex justify-center mb-2.5">
@@ -844,7 +844,7 @@ export default function HalalifyChat({ threadId, ws, historyLoading, onHistoryLo
     // placeholders for alternating user/agent messages.
     const messagesSkeleton = (
         <div className="flex-1 overflow-hidden">
-            <div className="max-w-[80%] md:max-w-[60%] lg:max-w-[50%] mx-auto flex flex-col gap-y-6 pt-10 pb-4 px-4">
+            <div className="w-full max-w-[95%] sm:max-w-[85%] md:max-w-[75%] lg:max-w-[55%] xl:max-w-[50%] mx-auto flex flex-col gap-y-6 pt-10 pb-4 px-3 sm:px-4">
                 {[0, 1, 2, 3].map((i) => {
                     const mine = i % 2 === 1
                     const bar = isLight ? "bg-black/8" : "bg-white/10"
@@ -880,21 +880,21 @@ export default function HalalifyChat({ threadId, ws, historyLoading, onHistoryLo
 
             <AnimatePresence>
                 {permanentAlertDetails && permanentAlertDetails.length > 0 && (
-                    <motion.div className="w-full fixed top-6 right-6 flex flex-col gap-y-2 items-center">
+                    <motion.div className="w-full fixed top-4 sm:top-6 right-4 sm:right-6 flex flex-col gap-y-2 items-end z-30">
                         {permanentAlertDetails.slice(0, expandAlerts ? permanentAlertDetails.length - 1 : 1).map((m, i) => {
                             return (
-                                <motion.div className="w-max" key={i}>
+                                <motion.div className="w-max relative" key={i}>
                                     {permanentAlertDetails.length > 1 && (
                                         <div onClick={() => {
                                             setExpandAlerts(prev => !prev)
-                                        }} className="z-20 absolute cursor-pointer bg-white -top-4 right-0 w-5.5 h-5.5 flex justify-center items-center rounded-full border border-orange-400/40">
+                                        }} className="z-20 absolute cursor-pointer bg-white -top-3 right-0 w-5.5 h-5.5 flex justify-center items-center rounded-full border border-orange-400/40 shadow-sm">
                                             <strong className={`switzer-800 text-xs ${isLight ? "text-orange-700" : "text-orange-700"}`}>
                                                 {permanentAlertDetails.length}+
                                             </strong>
                                         </div>
                                     )}
-                                    <div className="animate-pulse left-[40%] bg-orange-700 w-60 p-0.5 rounded-sm flex items-center">
-                                        <strong className="roboto-500 text-sm tracking-tight text-white ml-4">{m.alertContent}</strong>
+                                    <div className="animate-pulse bg-orange-700 max-w-xs sm:w-60 px-3 py-1 rounded-md flex items-center shadow-md">
+                                        <strong className="roboto-500 text-xs sm:text-sm tracking-tight text-white">{m.alertContent}</strong>
                                     </div>
 
                                 </motion.div>
@@ -927,12 +927,12 @@ export default function HalalifyChat({ threadId, ws, historyLoading, onHistoryLo
                         className="flex-1 flex flex-col items-center justify-center px-4"
                         exit={{ opacity: 0, y: -24, transition: { duration: 0.25, ease: "easeIn" } }}
                     >
-                        <div className="w-[80%] md:w-[60%] lg:w-[50%] flex flex-col gap-y-6">
+                        <div className="w-full max-w-[95%] sm:max-w-[85%] md:max-w-[75%] lg:max-w-[55%] xl:max-w-[50%] flex flex-col gap-y-6">
                             <div>
-                                <p className={`text-6xl tracking-tighter switzer-500 ${isLight ? "text-black" : "text-white"}`}>
+                                <p className={`text-4xl sm:text-5xl md:text-6xl tracking-tighter switzer-500 ${isLight ? "text-black" : "text-white"}`}>
                                     Halal One
                                 </p>
-                                <div className="rounded-sm inter-500 text-white text-xs bg-green-500/90 px-2 h-4 w-max">
+                                <div className="rounded-sm inter-500 text-white text-xs bg-green-500/90 px-2 h-4 w-max mt-1">
                                     <p>Check Halal Status</p>
                                 </div>
                             </div>
@@ -949,7 +949,7 @@ export default function HalalifyChat({ threadId, ws, historyLoading, onHistoryLo
                     >
                         {/* Scrollable messages */}
                         <div className="flex-1 overflow-y-auto">
-                            <div className="max-w-[80%] md:max-w-[60%] lg:max-w-[50%] mx-auto flex flex-col gap-y-6 pt-10 pb-4 px-4">
+                            <div className="w-full max-w-[95%] sm:max-w-[85%] md:max-w-[75%] lg:max-w-[55%] xl:max-w-[50%] mx-auto flex flex-col gap-y-6 pt-10 pb-4 px-2 sm:px-4">
                                 {messages.map((msg) => (
                                     <motion.div
                                         key={msg.id}
@@ -959,7 +959,7 @@ export default function HalalifyChat({ threadId, ws, historyLoading, onHistoryLo
                                         className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                                     >
                                         {msg.role === "user" ? (
-                                            <div className="max-w-[75%] flex flex-col gap-y-2 items-end">
+                                            <div className="max-w-[85%] sm:max-w-[75%] flex flex-col gap-y-2 items-end">
                                                 {msg.imageDataUrl ? (
                                                     <img
                                                         src={msg.imageDataUrl}
@@ -1155,8 +1155,8 @@ export default function HalalifyChat({ threadId, ws, historyLoading, onHistoryLo
                         </div>
 
                         {/* Input pinned to bottom */}
-                        <div className={`shrink-0 px-4 pt-3 pb-6 flex justify-center border-t ${isLight ? "border-black/8" : "border-white/8"}`}>
-                            <div className="w-[80%] md:w-[60%] lg:w-[50%]">
+                        <div className={`shrink-0 px-2 sm:px-4 pt-3 pb-4 sm:pb-6 flex justify-center border-t ${isLight ? "border-black/8" : "border-white/8"}`}>
+                            <div className="w-full max-w-[95%] sm:max-w-[85%] md:max-w-[75%] lg:max-w-[55%] xl:max-w-[50%]">
                                 {inputBox}
                             </div>
                         </div>
