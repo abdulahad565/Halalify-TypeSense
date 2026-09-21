@@ -79,17 +79,17 @@ def _build_vlm(model_id: str):
     )
 
 
-# Built once and reused. Building a fresh ChatFireworks per call opened a new aiohttp
-# session each time and leaked it ("Unclosed client session"); caching keeps one
-# session per model for the process lifetime and skips rebuild overhead.
-_VLMS = {pref: _build_vlm(model_id) for pref, model_id in FALLBACK_VLMS.items()}
+# Built LAZILY on first use and cached for the process lifetime.
+_VLMS: dict[str, Any] = {}
 
 
 def select_vlm(model_preference: str):
     """Return the cached structured VLM for a preference key
-    ("primary_vlm" | "secondary_vlm" | "tertiary_vlm")."""
+    ("primary_vlm" | "secondary_vlm" | "tertiary_vlm"), building it on first use."""
     if not isinstance(model_preference, str):
         raise TypeError("Model preference must be a string")
+    if model_preference not in _VLMS:
+        _VLMS[model_preference] = _build_vlm(FALLBACK_VLMS[model_preference])
     return _VLMS[model_preference]
 
 
