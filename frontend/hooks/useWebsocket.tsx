@@ -18,7 +18,7 @@ const RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000, 16000, 30000]
 // each brief open, so this hard ceiling stops it looping well past the schedule.
 const MAX_TOTAL_RECONNECTS = 12
 
-const useWebsocket = (url: string): UseWebSocketReturn => {
+const useWebsocket = (url: string, enabled: boolean = true): UseWebSocketReturn => {
     const wsRef = useRef<WebSocket | null>(null)
     const [isConnected, setIsConnected] = useState(false)
     // True only once every reconnect attempt has been exhausted — the UI uses this
@@ -30,6 +30,13 @@ const useWebsocket = (url: string): UseWebSocketReturn => {
     const totalReconnectAttempts = useRef(0)
 
     useEffect(() => {
+        // Intentional shutdown (e.g. session expired): stay closed, no reconnect.
+        // The prior effect run's cleanup already closed any open socket.
+        if (!enabled) {
+            setIsConnected(false)
+            return
+        }
+
         const supabase = createClient()
 
         let reconnectTimeout: NodeJS.Timeout | undefined
@@ -144,7 +151,7 @@ const useWebsocket = (url: string): UseWebSocketReturn => {
             clearTimeout(stableTimeout)
             wsRef.current?.close()
         }
-    }, [url])
+    }, [url, enabled])
 
     // Stable identity so consumers can safely list it in effect deps.
     const sendMessage = useCallback((message: string) => {

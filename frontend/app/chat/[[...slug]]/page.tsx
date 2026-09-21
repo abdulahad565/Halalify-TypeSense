@@ -280,6 +280,11 @@ export default function Page() {
     const [profile, setProfile] = useState<{ name: string; email: string; avatarUrl: string }>({ name: "", email: "", avatarUrl: "" })
     const firstName = profile.name ? profile.name.split(" ")[0] : "there"
     const initials = (profile.name || "U").split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase()
+    // Mid-session death (refresh token expired/revoked → SIGNED_OUT). Shows a blocking
+    // overlay and drops the socket. signingOutRef suppresses the overlay when the user
+    // signs out deliberately (that also fires SIGNED_OUT).
+    const [sessionExpired, setSessionExpired] = useState<boolean>(false)
+    const signingOutRef = useRef<boolean>(false)
 
     useEffect(() => {
         supabase.auth.getSession().then(({ data: { session } }) => {
@@ -292,8 +297,28 @@ export default function Page() {
         })
     }, [])
 
+    // Detect a mid-session token death. onAuthStateChange fires SIGNED_OUT when a
+    // background refresh is rejected (dead refresh token) — the only client-side signal
+    // that the session ended. Only SIGNED_OUT (an initial no-session load is handled by
+    // the guard above), and not when WE triggered the sign-out.
+    useEffect(() => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+            if (event === "SIGNED_OUT" && !signingOutRef.current) setSessionExpired(true)
+        })
+        return () => subscription.unsubscribe()
+    }, [])
+
+    // Sign out and return to login, remembering where to come back to (see `next`).
+    const goToLogin = async () => {
+        signingOutRef.current = true
+        const next = encodeURIComponent(window.location.pathname)
+        try { await supabase.auth.signOut() } catch { }
+        router.push(`/login?next=${next}`)
+    }
+
     // ---- one long-lived socket ----
-    const ws = useWebsocket(`${process.env.NEXT_PUBLIC_BACKEND_WS_URL}/ws`)
+    // Dropped (no reconnect) once the session has expired.
+    const ws = useWebsocket(`${process.env.NEXT_PUBLIC_BACKEND_WS_URL}/ws`, !sessionExpired)
     const { isConnected, connectionFailed, lastMessage, sendMessage, messageCount } = ws
 
     // ---- session routing ----
@@ -562,7 +587,7 @@ export default function Page() {
     const handleNewChat = () => { setOrphanPrompt(null); setHistoryLoading(false); setThreadId(crypto.randomUUID()); syncUrl(null); closeSidebarOnMobile() }
     const handleSelectSession = (id: string) => { closeSidebarOnMobile(); if (id === threadId) return; setOrphanPrompt(null); setHistoryLoading(true); setThreadId(id); syncUrl(id) }
     const handleDeleteSession = (id: string) => { sendMessage(JSON.stringify({ type: "delete_session", session_id: id })); setConfirmDeleteId(null) }
-    const handleSignOut = async () => { await supabase.auth.signOut(); router.push("/login"); router.refresh() }
+    const handleSignOut = async () => { signingOutRef.current = true; await supabase.auth.signOut(); router.push("/login"); router.refresh() }
 
     // ---- composer actions ----
     const pickPhrase = () => LOADING_PHRASES[Math.floor(Math.random() * LOADING_PHRASES.length)]
@@ -973,7 +998,7 @@ export default function Page() {
                     </Link>
                     <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
                         <AnimatePresence>
-                            {(connectionFailed || showDisconnected) && (
+                            {(connectionFailed || showDisconnected) && !sessionExpired && (
                                 <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--danger)", color: "#fff", borderRadius: 999, padding: "7px 16px", fontSize: 12.5, fontWeight: 700, boxShadow: "var(--shadow-md)" }}>
                                     <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#fff", animation: connectionFailed ? "none" : "hoc-pulse 1.1s ease-in-out infinite" }} />
                                     {connectionFailed
@@ -1159,6 +1184,34 @@ export default function Page() {
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            {/* Session-expired overlay: full-screen, blurs everything behind, blocks all
+                interaction. Non-dismissible — the only way out is signing in again. Sized
+                with relative units so it holds up across sm/md/lg and on resize. */}
+            {sessionExpired && (
+                <div
+                    role="dialog"
+                    aria-modal="true"
+                    style={{ position: "fixed", inset: 0, zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, background: "rgba(7,53,31,0.32)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)" }}
+                >
+                    <div style={{ width: "min(440px, 92vw)", maxHeight: "90dvh", overflowY: "auto", background: "#fff", borderRadius: 18, padding: "clamp(22px, 5vw, 34px)", boxShadow: "var(--shadow-lg, 0 20px 60px rgba(0,0,0,.25))", textAlign: "center", boxSizing: "border-box" }}>
+                        <div style={{ width: 46, height: 46, borderRadius: "50%", margin: "0 auto 14px", display: "flex", alignItems: "center", justifyContent: "center", background: "color-mix(in srgb,var(--gold-500) 22%,transparent)" }}>
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2" stroke="var(--green-800)" strokeWidth="1.8" /><path d="M8 11V8a4 4 0 0 1 8 0v3" stroke="var(--green-800)" strokeWidth="1.8" strokeLinecap="round" /></svg>
+                        </div>
+                        <h2 style={{ margin: 0, fontSize: "clamp(17px, 4.5vw, 20px)", fontWeight: 800, color: "var(--green-900)", letterSpacing: "-0.01em" }}>Session expired</h2>
+                        <p style={{ margin: "10px 0 22px", fontSize: 14, lineHeight: 1.6, color: "var(--muted)" }}>
+                            Your session has expired. Please sign in again to continue — you can resume from where you left off.
+                        </p>
+                        <button
+                            type="button"
+                            onClick={goToLogin}
+                            style={{ width: "100%", padding: "12px 16px", borderRadius: 12, border: "none", background: "var(--green-700)", color: "#fff", cursor: "pointer", fontFamily: "var(--font)", fontSize: 14.5, fontWeight: 800, letterSpacing: "-0.01em", boxShadow: "var(--shadow-sm)" }}
+                        >
+                            Sign in again
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }
