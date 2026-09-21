@@ -19,14 +19,30 @@ def normalize_barcode(raw: str) -> str | None:
     return cleaned
 
 
+def barcode_variants(barcode: str) -> list[str]:
+    """All zero-padded forms of `barcode` worth matching against, since the
+    same product may be stored as UPC-A, EAN-13, or GTIN-14 depending on
+    source (a 12-digit UPC-A is the same product as its 13-digit EAN-13 form
+    with a leading zero, etc). Order preserved, de-duplicated."""
+    variants = [barcode, barcode.zfill(13), barcode.zfill(14)]
+    seen, out = set(), []
+    for v in variants:
+        if v not in seen:
+            seen.add(v)
+            out.append(v)
+    return out
+
+
 def query_primary_db(barcode: str) -> dict | None:
-    """Exact lookup of `barcode` in the halal_products catalogue. Unlike
-    search_collection(), exceptions are NOT swallowed here — they propagate so
-    the caller can tell a real DB error apart from a genuine miss."""
+    """Exact (variant-aware) lookup of `barcode` in the halal_products
+    catalogue. Unlike search_collection(), exceptions are NOT swallowed here —
+    they propagate so the caller can tell a real DB error apart from a
+    genuine miss."""
+    quoted = ",".join(f'"{v}"' for v in barcode_variants(barcode))
     search_parameters = {
         "q": "*",
         "query_by": "norm_name",
-        "filter_by": f'barcodes:=["{barcode}"]',
+        "filter_by": f"barcodes:=[{quoted}]",
         "exclude_fields": "embedding",
         "limit": 1,
     }

@@ -12,7 +12,10 @@ from dotenv import load_dotenv
 from contextlib import asynccontextmanager
 from agents.langgraph_agent.utils.build_image_url import build_image_url
 from llms.vision_llm import invoke_llm_with_image, close_vlms
-from barcode_lookup import normalize_barcode, query_primary_db, project_product
+from barcode_lookup import (
+    normalize_barcode, query_primary_db, project_product,
+    query_off_db, project_off_product,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel as PydanticBaseModel
 from agents.langgraph_agent.main_langgraph_agent import stream_agent, compact_session
@@ -545,21 +548,42 @@ async def barcode_lookup_endpoint(req: BarcodeLookupRequest, authorization: str 
                 "product": None,
             }
 
-        if doc is None:
+        if doc is not None:
             return {
-                "state": "not_found",
+                "state": "found",
+                "source": "primary_db",
+                "message": "Product found.",
+                "barcode": normalized,
+                "product": project_product(doc),
+            }
+
+        try:
+            off_doc = await asyncio.to_thread(query_off_db, normalized)
+        except Exception as e:
+            log.error("http.barcode_lookup.off_failed", error=str(e), error_type=type(e).__name__)
+            return {
+                "state": "error",
                 "source": None,
-                "message": "We couldn't find a product for this barcode.",
+                "message": "Something went wrong. Please try again.",
                 "barcode": normalized,
                 "product": None,
             }
 
+        if off_doc is not None:
+            return {
+                "state": "found",
+                "source": "open_food_facts",
+                "message": "Found on Open Food Facts (unverified).",
+                "barcode": normalized,
+                "product": project_off_product(off_doc),
+            }
+
         return {
-            "state": "found",
-            "source": "primary_db",
-            "message": "Product found.",
+            "state": "not_found",
+            "source": None,
+            "message": "We couldn't find a product for this barcode.",
             "barcode": normalized,
-            "product": project_product(doc),
+            "product": None,
         }
 
 

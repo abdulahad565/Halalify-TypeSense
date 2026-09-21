@@ -16,6 +16,7 @@ supabase
 httpx
 rapidfuzz
 valkey
+psycopg2-binary
 structlog
 pytest
 pytest-asyncio
