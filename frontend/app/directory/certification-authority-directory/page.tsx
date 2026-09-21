@@ -61,35 +61,36 @@ const FOOTER_COLUMNS = [
 
 export default function Page() {
   return (
-    <div className="plus-jakarta-sans-400 min-h-screen bg-ho-bg text-ho-ink antialiased">
+    <div className="plus-jakarta-sans-400 min-h-screen bg-ho-bg text-ho-ink antialiased overflow-x-hidden">
       {/* NAV */}
-      <header className="sticky top-0 z-40 flex items-center justify-between gap-3 border-b border-ho-green/8 bg-ho-bg/90 px-5 py-4 backdrop-blur-sm sm:px-6 md:px-10">
-        <Link href="/" aria-label="Back to home" className="flex items-center gap-[11px]">
-          <HalalOneMark className="h-[38px] w-[34px] bg-ho-green" check={17} />
-          <Wordmark className="text-[21px]" />
-        </Link>
-
-        <nav className="hidden items-center gap-[30px] md:flex">
-          <Link href="/" className="plus-jakarta-sans-500 text-[14px] text-ho-muted transition-colors hover:text-ho-green">
-            Home
-          </Link>
-          <span className="plus-jakarta-sans-600 text-[14px] text-ho-green">
-            Directory
-          </span>
-          <Link href="/directory/regulatory-intelligence" className="plus-jakarta-sans-500 text-[14px] text-ho-muted transition-colors hover:text-ho-green">
-            Regulatory
-          </Link>
-          {NAV_ITEMS.slice(1).map((item) => (
-            <span key={item} className="plus-jakarta-sans-500 text-[14px] text-ho-muted">
-              {item}
+      <header className="sticky top-0 z-40 border-b border-ho-green/8 bg-ho-bg/90 px-4 py-2.5 sm:py-3.5 backdrop-blur-sm sm:px-6 md:px-10">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <Link href="/" aria-label="Back to home" className="flex items-center gap-[10px] flex-none">
+              <HalalOneMark className="h-[34px] w-[30px] sm:h-[38px] sm:w-[34px] bg-ho-green" check={17} />
+              <Wordmark className="text-[19px] sm:text-[21px]" />
+            </Link>
+            <div className="hidden md:block w-px h-5 bg-ho-green/15" />
+            <span className="hidden md:inline-block text-[13px] font-semibold text-ho-muted">
+              Certification Authorities Directory
             </span>
-          ))}
-          <span className="plus-jakarta-sans-600 rounded-[9px] border-[1.5px] border-ho-gold px-4 py-2 text-[13.5px] text-ho-green">
-            Verify a certificate
-          </span>
-        </nav>
+          </div>
 
-        <HamburgerMenu />
+          <div className="flex items-center gap-3 sm:gap-4">
+            <span className="hidden sm:inline-block plus-jakarta-sans-700 text-[11px] tracking-[.12em] uppercase text-ho-gold-dk">
+              Module 1 · Directory
+            </span>
+            <HamburgerMenu />
+          </div>
+        </div>
+
+        {/* Mobile Row 2 */}
+        <div className="flex sm:hidden items-center justify-between pt-1.5 mt-1.5 border-t border-ho-green/8 text-[11.5px]">
+          <span className="font-semibold text-ho-muted">Certification Authorities</span>
+          <span className="plus-jakarta-sans-700 text-[10px] tracking-[.08em] uppercase text-ho-gold-dk">
+            Module 1 · Directory
+          </span>
+        </div>
       </header>
 
       <DirectoryClient />

@@ -2,6 +2,7 @@
 
 import { useMemo, useState, type CSSProperties } from "react"
 import Link from "next/link"
+import HamburgerMenu from "@/components/HamburgerMenu"
 import { TRADEFLOWS } from "./data"
 
 const SCOPED_CSS = `
@@ -15,6 +16,7 @@ const SCOPED_CSS = `
   --font:var(--font-plus-jakarta-sans),ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   font-family:var(--font);background:var(--cream-50);color:var(--ink);
   -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;min-height:100vh;
+  overflow-x: hidden;
 }
 .trade-root *{box-sizing:border-box;}
 .trade-root a{color:var(--green-800);text-decoration:none;transition:color .13s ease;}
@@ -22,14 +24,243 @@ const SCOPED_CSS = `
 .trade-root ::selection{background:var(--gold-200);color:var(--green-900);}
 .trade-root input::placeholder{color:var(--muted);}
 @keyframes trade-fade{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
-@media (max-width:760px){
-  .trade-stats{grid-template-columns:repeat(2,1fr) !important;}
-  .trade-card{grid-template-columns:auto 1fr !important;}
-  .trade-metrics{grid-column:1 / -1 !important;border-left:none !important;border-top:1px solid var(--cream-100) !important;flex-direction:row !important;}
+
+.trade-root .trade-head-container {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 12px 24px;
+}
+.trade-root .trade-head-row1 {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+}
+.trade-root .trade-head-subtitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.trade-root .trade-head-divider {
+  width: 1px;
+  height: 22px;
+  background: var(--border);
+}
+.trade-root .trade-head-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.trade-root .trade-head-row2 {
+  display: none;
+}
+
+.trade-root .trade-hero-inner {
+  position: relative;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 52px 24px 58px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 32px;
+}
+.trade-root .trade-hero-count {
+  text-align: right;
+}
+.trade-root .trade-main-wrap {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0 24px 72px;
+}
+.trade-root .trade-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-top: -28px;
+  position: relative;
+  z-index: 10;
+}
+.trade-root .trade-filter-panel {
+  position: sticky;
+  top: 63px;
+  z-index: 30;
+  margin-top: 20px;
+  background: color-mix(in srgb, var(--cream-50) 90%, transparent);
+  backdrop-filter: blur(8px);
+  padding: 12px 0;
+}
+.trade-root .trade-score-rail {
+  width: 74px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  padding: 14px 8px;
+}
+.trade-root .trade-card-content {
+  padding: 15px 20px;
+  min-width: 0;
+}
+.trade-root .trade-metrics {
+  padding: 15px 22px;
+  background: color-mix(in srgb, var(--cream-100) 55%, transparent);
+  border-left: 1px solid var(--cream-100);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  min-width: 150px;
+}
+.trade-root .trade-footer-inner {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 38px 24px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+}
+.trade-root .trade-footer-note {
+  font-size: 11.5px;
+  color: color-mix(in srgb, var(--cream-50) 60%, transparent);
+  max-width: 540px;
+  line-height: 1.6;
+  text-align: right;
+}
+
+@media (max-width: 960px) {
+  .trade-root .trade-stats {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+@media (max-width: 768px) {
+  .trade-root .trade-filter-panel {
+    position: static !important;
+    top: auto !important;
+    backdrop-filter: none !important;
+    padding: 8px 0 12px !important;
+  }
+}
+@media (max-width: 760px) {
+  .trade-root .trade-card {
+    grid-template-columns: auto 1fr !important;
+  }
+  .trade-root .trade-metrics {
+    grid-column: 1 / -1 !important;
+    border-left: none !important;
+    border-top: 1px solid var(--cream-100) !important;
+    flex-direction: row !important;
+    justify-content: space-around !important;
+    padding: 12px 16px !important;
+  }
+}
+@media (max-width: 640px) {
+  .trade-root .trade-head-container {
+    padding: 10px 16px 8px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 6px !important;
+  }
+  .trade-root .trade-head-row1 {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+  }
+  .trade-root .trade-head-divider {
+    display: none !important;
+  }
+  .trade-root .trade-head-subtitle {
+    display: none !important;
+  }
+  .trade-root .trade-head-tag-desktop {
+    display: none !important;
+  }
+  .trade-root .trade-head-right {
+    margin-left: 0 !important;
+    gap: 8px !important;
+  }
+  .trade-root .trade-head-row2 {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    padding-top: 5px !important;
+    border-top: 1px solid color-mix(in srgb, var(--border) 65%, transparent) !important;
+  }
+  .trade-root .trade-head-subtitle-mobile {
+    font-size: 11.5px !important;
+    font-weight: 600 !important;
+    color: var(--muted) !important;
+  }
+  .trade-root .trade-head-tag-mobile {
+    font-size: 10px !important;
+    font-weight: 800 !important;
+    letter-spacing: .08em !important;
+    text-transform: uppercase !important;
+    color: var(--gold-600) !important;
+  }
+  .trade-root .trade-hero-inner {
+    padding: 36px 16px 44px !important;
+    gap: 20px !important;
+  }
+  .trade-root .trade-hero-count {
+    text-align: left !important;
+  }
+  .trade-root .trade-main-wrap {
+    padding: 0 16px 56px !important;
+  }
+  .trade-root .trade-stats {
+    margin-top: -18px !important;
+    gap: 10px !important;
+  }
+  .trade-root .trade-footer-inner {
+    padding: 30px 16px !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 14px !important;
+  }
+  .trade-root .trade-footer-note {
+    text-align: left !important;
+  }
+}
+@media (max-width: 540px) {
+  .trade-root .trade-stats {
+    grid-template-columns: 1fr !important;
+  }
+  .trade-root .trade-card {
+    grid-template-columns: 1fr !important;
+  }
+  .trade-root .trade-score-rail {
+    width: 100% !important;
+    flex-direction: row !important;
+    justify-content: space-between !important;
+    padding: 8px 16px !important;
+  }
+  .trade-root .trade-score-rail-top {
+    display: flex !important;
+    align-items: baseline !important;
+    gap: 4px !important;
+  }
+  .trade-root .trade-score-label {
+    margin-top: 0 !important;
+  }
+  .trade-root .trade-card-content {
+    padding: 12px 14px !important;
+  }
+  .trade-root .trade-metrics {
+    justify-content: space-between !important;
+    padding: 10px 14px !important;
+  }
 }
 `
 
-const kicker: CSSProperties = { fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".12em", color: "var(--gold-600)" }
+const kicker: CSSProperties = { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".12em", color: "var(--gold-600)" }
 
 function scoreStyle(n: number) {
   if (n >= 9) return { bg: "linear-gradient(160deg,#196B24,#0F4B2E)", label: "Prime" }
@@ -87,20 +318,29 @@ export default function TradeIntelligenceClient() {
 
       {/* HEADER */}
       <header style={{ position: "sticky", top: 0, zIndex: 40, background: "color-mix(in srgb,var(--cream-50) 88%,transparent)", backdropFilter: "blur(10px)", borderBottom: "1px solid var(--border)" }}>
-        <div style={{ maxWidth: 1240, margin: "0 auto", padding: "12px 24px", display: "flex", alignItems: "center", gap: 16 }}>
-          <Link href="/" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <svg width="30" height="30" viewBox="-16 -16 32 32" aria-hidden="true">
-              <path d="M0 -13 L11.3 -6.5 L11.3 6.5 L0 13 L-11.3 6.5 L-11.3 -6.5 Z" fill="none" stroke="var(--gold-500)" strokeWidth="2.6" strokeLinejoin="round" />
-              <path d="M-5 0.5 L-1.3 4.6 L5.8 -4.5" fill="none" stroke="var(--green-800)" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <div style={{ fontSize: 19, fontWeight: 800, letterSpacing: "-0.02em", color: "var(--green-900)" }}>Halal<span style={{ color: "var(--gold-600)" }}>One</span></div>
-          </Link>
-          <div style={{ width: 1, height: 22, background: "var(--border)" }} />
-          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--muted)" }}>Trade &amp; Opportunity Intelligence</div>
-          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14 }}>
-            <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--green-900)", background: "var(--gold-500)", padding: "3px 9px", borderRadius: 999 }}>Premium</span>
-            <span style={{ ...kicker, letterSpacing: ".1em" }}>Module 7</span>
-            <Link href="/" style={{ fontSize: 13, fontWeight: 700, color: "var(--green-800)" }}>Back to platform ↗</Link>
+        <div className="trade-head-container">
+          <div className="trade-head-row1">
+            <Link href="/" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <svg width="30" height="30" viewBox="-16 -16 32 32" aria-hidden="true">
+                <path d="M0 -13 L11.3 -6.5 L11.3 6.5 L0 13 L-11.3 6.5 L-11.3 -6.5 Z" fill="none" stroke="var(--gold-500)" strokeWidth="2.6" strokeLinejoin="round" />
+                <path d="M-5 0.5 L-1.3 4.6 L5.8 -4.5" fill="none" stroke="var(--green-800)" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <div style={{ fontSize: 19, fontWeight: 800, letterSpacing: "-0.02em", color: "var(--green-900)" }}>Halal<span style={{ color: "var(--gold-600)" }}>One</span></div>
+            </Link>
+            <div className="trade-head-divider" />
+            <div className="trade-head-subtitle">Trade &amp; Opportunity Intelligence</div>
+            <div className="trade-head-right" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <span className="trade-head-tag-desktop" style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--green-900)", background: "var(--gold-500)", padding: "3px 9px", borderRadius: 999 }}>Premium</span>
+              <span className="trade-head-tag-desktop" style={{ ...kicker }}>Module 7 · Trade</span>
+              <HamburgerMenu />
+            </div>
+          </div>
+          <div className="trade-head-row2">
+            <span className="trade-head-subtitle-mobile">Trade &amp; Opportunity Intelligence</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--green-900)", background: "var(--gold-500)", padding: "2px 7px", borderRadius: 999 }}>Premium</span>
+              <span className="trade-head-tag-mobile">Module 7 · Trade</span>
+            </div>
           </div>
         </div>
       </header>
@@ -108,23 +348,23 @@ export default function TradeIntelligenceClient() {
       {/* HERO */}
       <section style={{ background: "linear-gradient(160deg,#0F4B2E,#07351F)", color: "var(--cream-50)", position: "relative", overflow: "hidden" }}>
         <div aria-hidden="true" style={{ position: "absolute", inset: 0, backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 3L54 30L30 57L6 30Z' fill='none' stroke='rgba(251,250,246,0.05)' stroke-width='1'/%3E%3C/svg%3E\")", backgroundSize: "60px" }} />
-        <div style={{ position: "relative", maxWidth: 1240, margin: "0 auto", padding: "52px 24px 58px", display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "flex-end", gap: 32 }}>
+        <div className="trade-hero-inner">
           <div style={{ maxWidth: 660 }}>
             <div style={{ ...kicker, letterSpacing: ".14em", color: "var(--gold-500)" }}>Regulatory Intelligence · Trade · Premium</div>
-            <h1 style={{ margin: "16px 0 0", fontSize: "clamp(28px,3.6vw,42px)", lineHeight: 1.07, fontWeight: 800, letterSpacing: "-0.025em", color: "#fff", textWrap: "balance" }}>Halal trade flows and market opportunity, scored.</h1>
-            <p style={{ margin: "15px 0 0", fontSize: 16, lineHeight: 1.6, color: "color-mix(in srgb,var(--cream-50) 74%,transparent)", maxWidth: 580 }}>Exporter-to-importer corridors with annual value, growth, the certification that unlocks access, and an opportunity score — to find where halal demand is outpacing supply.</p>
+            <h1 style={{ margin: "16px 0 0", fontSize: "clamp(26px,3.6vw,42px)", lineHeight: 1.07, fontWeight: 800, letterSpacing: "-0.025em", color: "#fff", textWrap: "balance" }}>Halal trade flows and market opportunity, scored.</h1>
+            <p style={{ margin: "15px 0 0", fontSize: "clamp(14px,1.8vw,16px)", lineHeight: 1.6, color: "color-mix(in srgb,var(--cream-50) 74%,transparent)", maxWidth: 580 }}>Exporter-to-importer corridors with annual value, growth, the certification that unlocks access, and an opportunity score — to find where halal demand is outpacing supply.</p>
             <p style={{ margin: "14px 0 0", fontSize: 12, color: "color-mix(in srgb,var(--cream-50) 52%,transparent)" }}>Sources: UN COMTRADE · ITC · OIC Statistics · ABIEC · MAPA · DFAT · ICCD analysis.</p>
           </div>
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 60, fontWeight: 800, lineHeight: 1, letterSpacing: "-0.03em", color: "#fff" }}>{all.length}</div>
+          <div className="trade-hero-count">
+            <div style={{ fontSize: "clamp(44px,6vw,60px)", fontWeight: 800, lineHeight: 1, letterSpacing: "-0.03em", color: "#fff" }}>{all.length}</div>
             <div style={{ ...kicker, letterSpacing: ".14em", color: "var(--gold-500)", marginTop: 6 }}>Trade corridors</div>
           </div>
         </div>
       </section>
 
-      <div style={{ maxWidth: 1240, margin: "0 auto", padding: "0 24px 72px" }}>
+      <div className="trade-main-wrap">
         {/* STATS */}
-        <div className="trade-stats" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginTop: -28, position: "relative", zIndex: 10 }}>
+        <div className="trade-stats">
           {stats.map((s) => (
             <div key={s.label} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 14, padding: "16px 18px", boxShadow: "var(--shadow-sm)", borderTop: `3px solid ${s.accent}` }}>
               <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em", color: "var(--green-900)", lineHeight: 1 }}>{s.value}</div>
@@ -134,7 +374,7 @@ export default function TradeIntelligenceClient() {
         </div>
 
         {/* CONTROLS */}
-        <div style={{ position: "sticky", top: 63, zIndex: 30, marginTop: 20, background: "color-mix(in srgb,var(--cream-50) 90%,transparent)", backdropFilter: "blur(8px)", padding: "12px 0" }}>
+        <div className="trade-filter-panel">
           <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 16, padding: "14px 16px", boxShadow: "var(--shadow-sm)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--cream-100)", border: "1px solid var(--border)", borderRadius: 12, padding: "11px 15px" }}>
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="8" stroke="#657269" strokeWidth="2" /><path d="m21 21-4.35-4.35" stroke="#657269" strokeWidth="2" strokeLinecap="round" /></svg>
@@ -177,13 +417,15 @@ export default function TradeIntelligenceClient() {
             return (
               <article key={c.id} className="trade-card" style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 16, boxShadow: "var(--shadow-sm)", overflow: "hidden", animation: "trade-fade .3s ease both", display: "grid", gridTemplateColumns: "auto 1fr auto", alignItems: "stretch" }}>
                 {/* score rail */}
-                <div style={{ width: 74, background: ss.bg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#fff", padding: "14px 8px" }}>
-                  <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1 }}>{c.score}</div>
-                  <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".08em", opacity: 0.85, marginTop: 2 }}>/ 10</div>
-                  <div style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", marginTop: 8, textAlign: "center", opacity: 0.9 }}>{ss.label}</div>
+                <div className="trade-score-rail" style={{ background: ss.bg }}>
+                  <div className="trade-score-rail-top">
+                    <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1 }}>{c.score}</div>
+                    <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".08em", opacity: 0.85, marginTop: 2 }}>/ 10</div>
+                  </div>
+                  <div className="trade-score-label" style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", marginTop: 8, textAlign: "center", opacity: 0.9 }}>{ss.label}</div>
                 </div>
                 {/* middle */}
-                <div style={{ padding: "15px 20px", minWidth: 0 }}>
+                <div className="trade-card-content">
                   <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                     <span style={{ fontSize: 15, fontWeight: 800, color: "var(--green-800)" }}>{c.exporter}</span>
                     <svg width="22" height="12" viewBox="0 0 22 12" fill="none" aria-hidden="true"><path d="M0 6h18M14 1l5 5-5 5" stroke="var(--gold-500)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -196,7 +438,7 @@ export default function TradeIntelligenceClient() {
                   </div>
                 </div>
                 {/* metrics */}
-                <div className="trade-metrics" style={{ padding: "15px 22px", background: "color-mix(in srgb,var(--cream-100) 55%,transparent)", borderLeft: "1px solid var(--cream-100)", display: "flex", flexDirection: "column", justifyContent: "center", gap: 10, minWidth: 150 }}>
+                <div className="trade-metrics">
                   <div>
                     <div style={{ fontSize: 9.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".1em", color: "var(--gold-600)" }}>Annual value</div>
                     <div style={{ fontSize: 16, fontWeight: 800, color: "var(--green-900)", fontFamily: "var(--mono)", letterSpacing: "-0.02em", marginTop: 2 }}>{c.value}</div>
@@ -221,7 +463,7 @@ export default function TradeIntelligenceClient() {
 
       {/* FOOTER */}
       <footer style={{ background: "linear-gradient(160deg,#0F4B2E,#07351F)", color: "var(--cream-50)" }}>
-        <div style={{ maxWidth: 1240, margin: "0 auto", padding: "38px 24px", display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 20 }}>
+        <div className="trade-footer-inner">
           <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
             <svg width="28" height="28" viewBox="-16 -16 32 32" aria-hidden="true">
               <path d="M0 -13 L11.3 -6.5 L11.3 6.5 L0 13 L-11.3 6.5 L-11.3 -6.5 Z" fill="none" stroke="var(--gold-500)" strokeWidth="2.6" strokeLinejoin="round" />
@@ -232,7 +474,7 @@ export default function TradeIntelligenceClient() {
               <div style={{ fontSize: 11, color: "color-mix(in srgb,var(--cream-50) 60%,transparent)" }}>Trade &amp; Opportunity Intelligence · Module 7</div>
             </div>
           </div>
-          <div style={{ fontSize: 11.5, color: "color-mix(in srgb,var(--cream-50) 60%,transparent)", maxWidth: 540, lineHeight: 1.6, textAlign: "right" }}>Opportunity scores are ICCD analytical estimates from public trade data, not guarantees. Verify tariffs, certification recognition and market-access requirements before committing to any corridor.</div>
+          <div className="trade-footer-note">Opportunity scores are ICCD analytical estimates from public trade data, not guarantees. Verify tariffs, certification recognition and market-access requirements before committing to any corridor.</div>
         </div>
       </footer>
     </div>

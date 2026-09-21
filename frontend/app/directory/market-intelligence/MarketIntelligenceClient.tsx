@@ -2,6 +2,7 @@
 
 import { useMemo, useState, type CSSProperties } from "react"
 import Link from "next/link"
+import HamburgerMenu from "@/components/HamburgerMenu"
 import { bigStats, timeline, countries, sectors, trends, corridors } from "./data"
 
 const SCOPED_CSS = `
@@ -15,17 +16,258 @@ const SCOPED_CSS = `
   --font:var(--font-plus-jakarta-sans),ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   font-family:var(--font);background:var(--cream-50);color:var(--ink);
   -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;min-height:100vh;
+  overflow-x: hidden;
 }
 .mktintel-root *{box-sizing:border-box;}
 .mktintel-root a{color:var(--green-800);text-decoration:none;transition:color .13s ease;}
 .mktintel-root a:hover{color:var(--gold-600);}
 .mktintel-root ::selection{background:var(--gold-200);color:var(--green-900);}
 .mktintel-root input::placeholder{color:var(--muted);}
-@media (max-width:900px){ .mktintel-grid4{grid-template-columns:repeat(2,1fr) !important;} .mktintel-grid3{grid-template-columns:1fr !important;} }
-@media (max-width:600px){ .mktintel-grid4{grid-template-columns:1fr !important;} }
+
+.mktintel-root .mktintel-head-container {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 12px 24px;
+}
+.mktintel-root .mktintel-head-row1 {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+}
+.mktintel-root .mktintel-head-subtitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.mktintel-root .mktintel-head-divider {
+  width: 1px;
+  height: 22px;
+  background: var(--border);
+}
+.mktintel-root .mktintel-head-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.mktintel-root .mktintel-head-row2 {
+  display: none;
+}
+
+.mktintel-root .mktintel-hero-inner {
+  position: relative;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 52px 24px 58px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 32px;
+}
+.mktintel-root .mktintel-hero-count {
+  text-align: right;
+}
+.mktintel-root .mktintel-main-wrap {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0 24px 72px;
+}
+.mktintel-root .mktintel-grid4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+.mktintel-root .mktintel-grid3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+.mktintel-root .mktintel-stats {
+  margin-top: -28px;
+  position: relative;
+  z-index: 10;
+}
+.mktintel-root .mktintel-timeline-box {
+  background: #fff;
+  border: 1px solid var(--border);
+  borderRadius: 16px;
+  padding: 22px 24px 18px;
+  boxShadow: var(--shadow-sm);
+  overflow-x: auto;
+}
+.mktintel-root .mktintel-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.mktintel-root .mktintel-search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 12px;
+  box-shadow: var(--shadow-sm);
+}
+.mktintel-root .mktintel-table-desktop {
+  display: block;
+}
+.mktintel-root .mktintel-cards-mobile {
+  display: none;
+}
+.mktintel-root .mktintel-corridors-desktop {
+  display: block;
+}
+.mktintel-root .mktintel-corridors-mobile {
+  display: none;
+}
+.mktintel-root .mktintel-footer-inner {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 38px 24px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+}
+.mktintel-root .mktintel-footer-note {
+  font-size: 11.5px;
+  color: color-mix(in srgb, var(--cream-50) 60%, transparent);
+  max-width: 540px;
+  line-height: 1.6;
+  text-align: right;
+}
+
+@media (max-width: 1024px) {
+  .mktintel-root .mktintel-grid3 {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+@media (max-width: 900px) {
+  .mktintel-root .mktintel-grid4 {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+@media (max-width: 768px) {
+  .mktintel-root .mktintel-table-desktop {
+    display: none !important;
+  }
+  .mktintel-root .mktintel-cards-mobile {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+  .mktintel-root .mktintel-corridors-desktop {
+    display: none !important;
+  }
+  .mktintel-root .mktintel-corridors-mobile {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+  .mktintel-root .mktintel-grid3 {
+    grid-template-columns: 1fr !important;
+  }
+}
+@media (max-width: 640px) {
+  .mktintel-root .mktintel-head-container {
+    padding: 10px 16px 8px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 6px !important;
+  }
+  .mktintel-root .mktintel-head-row1 {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+  }
+  .mktintel-root .mktintel-head-divider {
+    display: none !important;
+  }
+  .mktintel-root .mktintel-head-subtitle {
+    display: none !important;
+  }
+  .mktintel-root .mktintel-head-tag-desktop {
+    display: none !important;
+  }
+  .mktintel-root .mktintel-head-right {
+    margin-left: 0 !important;
+    gap: 8px !important;
+  }
+  .mktintel-root .mktintel-head-row2 {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    padding-top: 5px !important;
+    border-top: 1px solid color-mix(in srgb, var(--border) 65%, transparent) !important;
+  }
+  .mktintel-root .mktintel-head-subtitle-mobile {
+    font-size: 11.5px !important;
+    font-weight: 600 !important;
+    color: var(--muted) !important;
+  }
+  .mktintel-root .mktintel-head-tag-mobile {
+    font-size: 10px !important;
+    font-weight: 800 !important;
+    letter-spacing: .08em !important;
+    text-transform: uppercase !important;
+    color: var(--gold-600) !important;
+  }
+  .mktintel-root .mktintel-hero-inner {
+    padding: 36px 16px 44px !important;
+    gap: 20px !important;
+  }
+  .mktintel-root .mktintel-hero-count {
+    text-align: left !important;
+  }
+  .mktintel-root .mktintel-main-wrap {
+    padding: 0 16px 56px !important;
+  }
+  .mktintel-root .mktintel-stats {
+    margin-top: -18px !important;
+    gap: 10px !important;
+  }
+  .mktintel-root .mktintel-timeline-box {
+    padding: 16px 14px 14px !important;
+  }
+  .mktintel-root .mktintel-section-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+  .mktintel-root .mktintel-search-box {
+    width: 100% !important;
+  }
+  .mktintel-root .mktintel-search-box input {
+    width: 100% !important;
+  }
+  .mktintel-root .mktintel-footer-inner {
+    padding: 30px 16px !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 14px !important;
+  }
+  .mktintel-root .mktintel-footer-note {
+    text-align: left !important;
+  }
+}
+@media (max-width: 540px) {
+  .mktintel-root .mktintel-grid4 {
+    grid-template-columns: 1fr !important;
+  }
+}
 `
 
-const kicker: CSSProperties = { fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".12em", color: "var(--gold-600)" }
+const kicker: CSSProperties = { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".12em", color: "var(--gold-600)" }
 const th: CSSProperties = { textAlign: "left", padding: "12px 12px", fontSize: 10.5, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--gold-200)" }
 const h2: CSSProperties = { fontSize: 19, fontWeight: 800, letterSpacing: "-0.015em", color: "var(--green-900)", margin: 0 }
 
@@ -64,17 +306,26 @@ export default function MarketIntelligenceClient() {
 
       {/* HEADER */}
       <header style={{ position: "sticky", top: 0, zIndex: 40, background: "color-mix(in srgb,var(--cream-50) 88%,transparent)", backdropFilter: "blur(10px)", borderBottom: "1px solid var(--border)" }}>
-        <div style={{ maxWidth: 1240, margin: "0 auto", padding: "12px 24px", display: "flex", alignItems: "center", gap: 16 }}>
-          <Link href="/" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <svg width="30" height="30" viewBox="-16 -16 32 32" aria-hidden="true"><path d="M0 -13 L11.3 -6.5 L11.3 6.5 L0 13 L-11.3 6.5 L-11.3 -6.5 Z" fill="none" stroke="var(--gold-500)" strokeWidth="2.6" strokeLinejoin="round" /><path d="M-5 0.5 L-1.3 4.6 L5.8 -4.5" fill="none" stroke="var(--green-800)" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            <div style={{ fontSize: 19, fontWeight: 800, letterSpacing: "-0.02em", color: "var(--green-900)" }}>Halal<span style={{ color: "var(--gold-600)" }}>One</span></div>
-          </Link>
-          <div style={{ width: 1, height: 22, background: "var(--border)" }} />
-          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--muted)" }}>Halal Market Intelligence</div>
-          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14 }}>
-            <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--green-900)", background: "var(--gold-500)", padding: "3px 9px", borderRadius: 999 }}>Premium</span>
-            <span style={{ ...kicker, letterSpacing: ".1em" }}>Module 5</span>
-            <Link href="/" style={{ fontSize: 13, fontWeight: 700, color: "var(--green-800)" }}>Back to platform ↗</Link>
+        <div className="mktintel-head-container">
+          <div className="mktintel-head-row1">
+            <Link href="/" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <svg width="30" height="30" viewBox="-16 -16 32 32" aria-hidden="true"><path d="M0 -13 L11.3 -6.5 L11.3 6.5 L0 13 L-11.3 6.5 L-11.3 -6.5 Z" fill="none" stroke="var(--gold-500)" strokeWidth="2.6" strokeLinejoin="round" /><path d="M-5 0.5 L-1.3 4.6 L5.8 -4.5" fill="none" stroke="var(--green-800)" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              <div style={{ fontSize: 19, fontWeight: 800, letterSpacing: "-0.02em", color: "var(--green-900)" }}>Halal<span style={{ color: "var(--gold-600)" }}>One</span></div>
+            </Link>
+            <div className="mktintel-head-divider" />
+            <div className="mktintel-head-subtitle">Halal Market Intelligence</div>
+            <div className="mktintel-head-right" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <span className="mktintel-head-tag-desktop" style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--green-900)", background: "var(--gold-500)", padding: "3px 9px", borderRadius: 999 }}>Premium</span>
+              <span className="mktintel-head-tag-desktop" style={{ ...kicker }}>Module 6 · Market</span>
+              <HamburgerMenu />
+            </div>
+          </div>
+          <div className="mktintel-head-row2">
+            <span className="mktintel-head-subtitle-mobile">Halal Market Intelligence</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--green-900)", background: "var(--gold-500)", padding: "2px 7px", borderRadius: 999 }}>Premium</span>
+              <span className="mktintel-head-tag-mobile">Module 6 · Market</span>
+            </div>
           </div>
         </div>
       </header>
@@ -82,23 +333,23 @@ export default function MarketIntelligenceClient() {
       {/* HERO */}
       <section style={{ background: "linear-gradient(160deg,#0F4B2E,#07351F)", color: "var(--cream-50)", position: "relative", overflow: "hidden" }}>
         <div aria-hidden="true" style={{ position: "absolute", inset: 0, backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 3L54 30L30 57L6 30Z' fill='none' stroke='rgba(251,250,246,0.05)' stroke-width='1'/%3E%3C/svg%3E\")", backgroundSize: "60px" }} />
-        <div style={{ position: "relative", maxWidth: 1240, margin: "0 auto", padding: "52px 24px 58px", display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "flex-end", gap: 32 }}>
+        <div className="mktintel-hero-inner">
           <div style={{ maxWidth: 660 }}>
             <div style={{ ...kicker, letterSpacing: ".14em", color: "var(--gold-500)" }}>Regulatory Intelligence · Market · Premium</div>
-            <h1 style={{ margin: "16px 0 0", fontSize: "clamp(28px,3.6vw,42px)", lineHeight: 1.07, fontWeight: 800, letterSpacing: "-0.025em", color: "#fff", textWrap: "balance" }}>The global halal economy, measured.</h1>
-            <p style={{ margin: "15px 0 0", fontSize: 16, lineHeight: 1.6, color: "color-mix(in srgb,var(--cream-50) 74%,transparent)", maxWidth: 580 }}>Market size, country profiles, sector analysis, trade corridors and the trends shaping a USD 2.1 trillion economy — synthesised into one intelligence brief.</p>
+            <h1 style={{ margin: "16px 0 0", fontSize: "clamp(26px,3.6vw,42px)", lineHeight: 1.07, fontWeight: 800, letterSpacing: "-0.025em", color: "#fff", textWrap: "balance" }}>The global halal economy, measured.</h1>
+            <p style={{ margin: "15px 0 0", fontSize: "clamp(14px,1.8vw,16px)", lineHeight: 1.6, color: "color-mix(in srgb,var(--cream-50) 74%,transparent)", maxWidth: 580 }}>Market size, country profiles, sector analysis, trade corridors and the trends shaping a USD 2.1 trillion economy — synthesised into one intelligence brief.</p>
             <p style={{ margin: "14px 0 0", fontSize: 12, color: "color-mix(in srgb,var(--cream-50) 52%,transparent)" }}>Sources: State of Global Islamic Economy Report 2024/25 · ITC · OIC Statistical Commission · ICCD Research.</p>
           </div>
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 60, fontWeight: 800, lineHeight: 1, letterSpacing: "-0.03em", color: "#fff" }}>$2.1T</div>
+          <div className="mktintel-hero-count">
+            <div style={{ fontSize: "clamp(44px,6vw,60px)", fontWeight: 800, lineHeight: 1, letterSpacing: "-0.03em", color: "#fff" }}>$2.1T</div>
             <div style={{ ...kicker, letterSpacing: ".14em", color: "var(--gold-500)", marginTop: 6 }}>Global market · 2025</div>
           </div>
         </div>
       </section>
 
-      <div style={{ maxWidth: 1240, margin: "0 auto", padding: "0 24px 72px" }}>
+      <div className="mktintel-main-wrap">
         {/* BIG STATS */}
-        <div className="mktintel-grid4" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginTop: -28, position: "relative", zIndex: 10 }}>
+        <div className="mktintel-grid4 mktintel-stats">
           {bigStats.map((s) => (
             <div key={s.l} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 14, padding: "18px 18px", boxShadow: "var(--shadow-sm)", borderTop: "3px solid var(--gold-500)" }}>
               <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em", color: "var(--green-900)", lineHeight: 1 }}>{s.v}</div>
@@ -110,12 +361,12 @@ export default function MarketIntelligenceClient() {
 
         {/* MARKET SIZE TIMELINE */}
         <section style={{ marginTop: 30 }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
             <h2 style={h2}>Market size trajectory</h2>
             <span style={{ fontSize: 12, color: "var(--muted)" }}>USD billions · 2022–2029</span>
           </div>
-          <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 16, padding: "22px 24px 18px", boxShadow: "var(--shadow-sm)" }}>
-            <div style={{ display: "flex", alignItems: "flex-end", gap: 12, height: 200 }}>
+          <div className="mktintel-timeline-box">
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 12, height: 200, minWidth: 480 }}>
               {timeline.map((t) => {
                 const val = parseFloat(t.v.replace(/,/g, "")) || 0
                 const pct = Math.round((val / maxTimeline) * 100)
@@ -140,12 +391,12 @@ export default function MarketIntelligenceClient() {
 
         {/* COUNTRY TABLE */}
         <section style={{ marginTop: 30 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 12, marginBottom: 14 }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+          <div className="mktintel-section-header">
+            <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
               <h2 style={h2}>Country market profiles</h2>
               <span style={{ fontSize: 12, color: "var(--muted)" }}>{countryCountLabel}</span>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#fff", border: "1px solid var(--border)", borderRadius: 10, padding: "8px 12px", boxShadow: "var(--shadow-sm)" }}>
+            <div className="mktintel-search-box">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="8" stroke="#657269" strokeWidth="2" /><path d="m21 21-4.35-4.35" stroke="#657269" strokeWidth="2" strokeLinecap="round" /></svg>
               <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search country…" style={{ border: "none", outline: "none", background: "transparent", fontFamily: "var(--font)", fontSize: 13, color: "var(--green-900)", width: 150 }} />
             </div>
@@ -159,7 +410,9 @@ export default function MarketIntelligenceClient() {
               </button>
             ))}
           </div>
-          <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 16, overflow: "hidden", boxShadow: "var(--shadow-sm)" }}>
+
+          {/* Desktop Table View */}
+          <div className="mktintel-table-desktop" style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 16, overflow: "hidden", boxShadow: "var(--shadow-sm)" }}>
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 940 }}>
                 <thead>
@@ -207,15 +460,64 @@ export default function MarketIntelligenceClient() {
               <div style={{ textAlign: "center", padding: "40px 20px", color: "var(--muted)", fontSize: 13 }}>No countries match your search.</div>
             )}
           </div>
+
+          {/* Mobile Cards View */}
+          <div className="mktintel-cards-mobile">
+            {filteredCountries.map((c) => {
+              const ms = maturityStyle(c.maturity)
+              return (
+                <div key={c.name} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 14, padding: "14px 16px", boxShadow: "var(--shadow-sm)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                      <span style={{ fontSize: 24 }}>{c.flag}</span>
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: "var(--green-900)" }}>{c.name}</div>
+                        <div style={{ fontSize: 11, color: "var(--muted)" }}>{c.region}</div>
+                      </div>
+                    </div>
+                    <span style={{ display: "inline-block", padding: "3px 10px", borderRadius: 999, fontSize: 10, fontWeight: 800, background: ms.bg, color: ms.fg, border: `1px solid ${ms.border}`, whiteSpace: "nowrap" }}>{c.maturity}</span>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 14px", padding: "10px 0", borderTop: "1px solid var(--cream-100)", borderBottom: "1px solid var(--cream-100)" }}>
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", color: "var(--gold-600)" }}>Market size</div>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: "var(--green-900)", fontFamily: "var(--mono)", marginTop: 2 }}>{c.size}</div>
+                      <div style={{ height: 4, background: "var(--cream-100)", borderRadius: 4, overflow: "hidden", marginTop: 4 }}><div style={{ height: "100%", width: `${c.bar}%`, background: "var(--green-700)", borderRadius: 4 }} /></div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", color: "var(--gold-600)" }}>YoY</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--green-700)", fontFamily: "var(--mono)", marginTop: 2 }}>{c.yoy}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", color: "var(--gold-600)" }}>Muslim pop.</div>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--green-900)", marginTop: 2 }}>{c.muslim} <span style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 500 }}>({c.muslimPct})</span></div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", color: "var(--gold-600)" }}>Per-capita</div>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink)", fontFamily: "var(--mono)", marginTop: 2 }}>{c.perCap}</div>
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: 10 }}>
+                    <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--green-800)", lineHeight: 1.4 }}>{c.role}</div>
+                    <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 3, lineHeight: 1.4 }}>{c.cats}</div>
+                  </div>
+                </div>
+              )
+            })}
+            {filteredCountries.length === 0 && (
+              <div style={{ textAlign: "center", padding: "40px 20px", color: "var(--muted)", fontSize: 13, background: "#fff", border: "1px solid var(--border)", borderRadius: 14 }}>No countries match your search.</div>
+            )}
+          </div>
         </section>
 
         {/* SECTORS */}
         <section style={{ marginTop: 34 }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
             <h2 style={h2}>Sector analysis</h2>
             <span style={{ fontSize: 12, color: "var(--muted)" }}>Six pillars of the halal economy</span>
           </div>
-          <div className="mktintel-grid3" style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
+          <div className="mktintel-grid3">
             {sectors.map((s) => (
               <div key={s.name} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 16, overflow: "hidden", boxShadow: "var(--shadow-sm)", borderTop: "4px solid var(--green-700)" }}>
                 <div style={{ padding: "18px 18px 16px" }}>
@@ -244,11 +546,11 @@ export default function MarketIntelligenceClient() {
 
         {/* TRENDS */}
         <section style={{ marginTop: 34 }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
             <h2 style={h2}>Trends shaping the market</h2>
             <span style={{ fontSize: 12, color: "var(--muted)" }}>Eight forces to watch</span>
           </div>
-          <div className="mktintel-grid4" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
+          <div className="mktintel-grid4">
             {trends.map((t) => (
               <div key={t.title} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 16, padding: 18, boxShadow: "var(--shadow-sm)" }}>
                 <div style={{ width: 38, height: 38, borderRadius: 11, background: "color-mix(in srgb,var(--gold-500) 16%,transparent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>{t.icon}</div>
@@ -261,11 +563,13 @@ export default function MarketIntelligenceClient() {
 
         {/* TRADE CORRIDORS */}
         <section style={{ marginTop: 34 }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
             <h2 style={h2}>Major trade corridors</h2>
             <span style={{ fontSize: 12, color: "var(--muted)" }}>Top halal trade flows by value</span>
           </div>
-          <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 16, overflow: "hidden", boxShadow: "var(--shadow-sm)" }}>
+
+          {/* Desktop Corridors Table */}
+          <div className="mktintel-corridors-desktop" style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 16, overflow: "hidden", boxShadow: "var(--shadow-sm)" }}>
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 900 }}>
                 <thead>
@@ -298,20 +602,51 @@ export default function MarketIntelligenceClient() {
               </table>
             </div>
           </div>
+
+          {/* Mobile Corridors Cards */}
+          <div className="mktintel-corridors-mobile">
+            {corridors.map((c) => (
+              <div key={`${c.from}-${c.to}`} style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 14, padding: "14px 16px", boxShadow: "var(--shadow-sm)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: "var(--green-800)" }}>{c.from}</span>
+                    <svg width="18" height="10" viewBox="0 0 22 12" fill="none" aria-hidden="true"><path d="M0 6h18M14 1l5 5-5 5" stroke="var(--gold-500)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: "var(--green-900)" }}>{c.to}</span>
+                  </div>
+                  <span style={{ display: "inline-block", padding: "3px 10px", borderRadius: 999, fontSize: 10, fontWeight: 700, background: "var(--cream-100)", color: "var(--muted)", border: "1px solid var(--border)" }}>{c.category}</span>
+                </div>
+
+                <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 10 }}>Players: {c.players}</div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, padding: "10px 0", borderTop: "1px solid var(--cream-100)", borderBottom: "1px solid var(--cream-100)" }}>
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", color: "var(--gold-600)" }}>Annual value</div>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: "var(--green-900)", fontFamily: "var(--mono)", marginTop: 2 }}>{c.value}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", color: "var(--gold-600)" }}>YoY</div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: "var(--green-700)", fontFamily: "var(--mono)", marginTop: 2 }}>{c.yoy}</div>
+                  </div>
+                </div>
+
+                <div style={{ fontSize: 11.5, color: "var(--ink)", lineHeight: 1.55, marginTop: 10 }}>{c.notes}</div>
+              </div>
+            ))}
+          </div>
         </section>
       </div>
 
       {/* FOOTER */}
       <footer style={{ background: "linear-gradient(160deg,#0F4B2E,#07351F)", color: "var(--cream-50)" }}>
-        <div style={{ maxWidth: 1240, margin: "0 auto", padding: "38px 24px", display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 20 }}>
+        <div className="mktintel-footer-inner">
           <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
             <svg width="28" height="28" viewBox="-16 -16 32 32" aria-hidden="true"><path d="M0 -13 L11.3 -6.5 L11.3 6.5 L0 13 L-11.3 6.5 L-11.3 -6.5 Z" fill="none" stroke="var(--gold-500)" strokeWidth="2.6" strokeLinejoin="round" /><path d="M-5 0.5 L-1.3 4.6 L5.8 -4.5" fill="none" stroke="var(--cream-50)" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
             <div>
               <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: "-0.02em", color: "#fff" }}>Halal<span style={{ color: "var(--gold-500)" }}>One</span></div>
-              <div style={{ fontSize: 11, color: "color-mix(in srgb,var(--cream-50) 60%,transparent)" }}>Halal Market Intelligence · Module 5</div>
+              <div style={{ fontSize: 11, color: "color-mix(in srgb,var(--cream-50) 60%,transparent)" }}>Halal Market Intelligence · Module 6</div>
             </div>
           </div>
-          <div style={{ fontSize: 11.5, color: "color-mix(in srgb,var(--cream-50) 60%,transparent)", maxWidth: 540, lineHeight: 1.6, textAlign: "right" }}>Market figures are aggregated third-party estimates for orientation and planning, not investment advice. Verify against primary sources before commercial decisions.</div>
+          <div className="mktintel-footer-note">Market figures are aggregated third-party estimates for orientation and planning, not investment advice. Verify against primary sources before commercial decisions.</div>
         </div>
       </footer>
     </div>

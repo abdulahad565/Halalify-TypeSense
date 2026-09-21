@@ -146,12 +146,125 @@
 /* Hamburger: hidden while the desktop nav bar is visible, shown once it hides. */
 .hl-root .hl-navburger { display: none; }
 
-@media (max-width: 900px) {
-  .hl-root .hl-hero-grid { grid-template-columns: 1fr !important; }
+/* Dedicated responsive classes */
+.hl-root .hl-hero-grid {
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: 56px;
+  align-items: center;
+}
+
+.hl-root .hl-split {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 24px;
+  align-items: start;
+}
+
+.hl-root .hl-mobile-split {
+  display: grid;
+  grid-template-columns: 1fr 0.85fr;
+  gap: 56px;
+  align-items: center;
+}
+
+.hl-root .hl-mobile-feature-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  max-width: 520px;
+}
+
+.hl-root .hl-mockup-wrap {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.hl-root .hl-phone-mockup {
+  position: relative;
+  width: 308px;
+  height: 600px;
+  max-width: 100%;
+  border-radius: 46px;
+  background: #071f14;
+  padding: 12px;
+  box-shadow: var(--shadow-lg);
+  border: 1px solid color-mix(in srgb, var(--cream-50) 14%, transparent);
+}
+
+.hl-root .hl-phone-conversation {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.hl-root .hl-phone-conversation::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.hl-root .hl-repo-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-standard);
+}
+.hl-root .hl-repo-row:hover {
+  background: var(--cream-100);
+}
+
+.hl-root .hl-repo-row-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.hl-root .hl-repo-row-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.hl-root .hl-repo-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 1024px) {
+  .hl-root .hl-hero-grid { grid-template-columns: 1fr !important; gap: 40px !important; }
   .hl-root .hl-split { grid-template-columns: 1fr !important; }
+  .hl-root .hl-mobile-split { grid-template-columns: 1fr !important; gap: 40px !important; }
+  .hl-root .hl-footer-grid { grid-template-columns: 1.2fr repeat(2, 1fr) !important; }
+}
+@media (max-width: 900px) {
   .hl-root .hl-navcenter { display: none !important; }
   .hl-root .hl-navburger { display: inline-flex !important; }
 }
 @media (max-width: 640px) {
   .hl-root .hl-nav-actions .hl-hide-sm { display: none !important; }
+  .hl-root .hl-footer-grid { grid-template-columns: 1fr !important; }
+  .hl-root .hl-mobile-feature-grid { grid-template-columns: 1fr !important; }
+  
+  .hl-root .hl-repo-row {
+    align-items: flex-start !important;
+    gap: 12px !important;
+    padding: 14px 14px !important;
+  }
+  .hl-root .hl-repo-row-content {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+  }
+  .hl-root .hl-repo-row-meta {
+    width: 100% !important;
+    justify-content: space-between !important;
+    gap: 8px !important;
+  }
 }
