@@ -13,8 +13,9 @@ from contextlib import asynccontextmanager
 from agents.langgraph_agent.utils.build_image_url import build_image_url
 from llms.vision_llm import invoke_llm_with_image, close_vlms
 from barcode_lookup import (
-    normalize_barcode, query_primary_db, project_product,
+    normalize_barcode, has_valid_check_digit, query_primary_db, project_product,
     query_off_db, project_off_product,
+    ExaBusyError, search_web_for_barcode, project_web_product,
 )
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel as PydanticBaseModel
@@ -535,17 +536,13 @@ async def barcode_lookup_endpoint(req: BarcodeLookupRequest, authorization: str 
                 "product": None,
             }
 
+        primary_failed = False
         try:
             doc = await asyncio.to_thread(query_primary_db, normalized)
         except Exception as e:
             log.error("http.barcode_lookup.db_failed", error=str(e), error_type=type(e).__name__)
-            return {
-                "state": "error",
-                "source": None,
-                "message": "Something went wrong. Please try again.",
-                "barcode": normalized,
-                "product": None,
-            }
+            doc = None
+            primary_failed = True
 
         if doc is not None:
             return {
@@ -556,17 +553,13 @@ async def barcode_lookup_endpoint(req: BarcodeLookupRequest, authorization: str 
                 "product": project_product(doc),
             }
 
+        off_failed = False
         try:
             off_doc = await asyncio.to_thread(query_off_db, normalized)
         except Exception as e:
             log.error("http.barcode_lookup.off_failed", error=str(e), error_type=type(e).__name__)
-            return {
-                "state": "error",
-                "source": None,
-                "message": "Something went wrong. Please try again.",
-                "barcode": normalized,
-                "product": None,
-            }
+            off_doc = None
+            off_failed = True
 
         if off_doc is not None:
             return {
@@ -575,6 +568,51 @@ async def barcode_lookup_endpoint(req: BarcodeLookupRequest, authorization: str 
                 "message": "Found on Open Food Facts (unverified).",
                 "barcode": normalized,
                 "product": project_off_product(off_doc),
+            }
+
+        web_attempted = False
+        web_failed = False
+        web_busy = False
+        web_product = None
+        if has_valid_check_digit(normalized):  # never pay for Exa on a broken barcode
+            web_attempted = True
+            try:
+                web_product = await asyncio.to_thread(search_web_for_barcode, normalized)
+            except ExaBusyError as e:
+                log.warning("http.barcode_lookup.web_busy", error=str(e), error_type=type(e).__name__)
+                web_busy = True
+            except Exception as e:
+                log.error("http.barcode_lookup.web_failed", error=str(e), error_type=type(e).__name__)
+                web_failed = True
+        else:
+            log.info("http.barcode_lookup.web_skipped", reason="bad_check_digit")
+        web_answered = web_attempted and not web_failed and not web_busy
+
+        if web_product is not None:
+            return {
+                "state": "found",
+                "source": "web_search",
+                "message": "Found via web search (unverified).",
+                "barcode": normalized,
+                "product": project_web_product(web_product),
+            }
+
+        if web_busy:
+            return {
+                "state": "busy",
+                "source": None,
+                "message": "We're a bit busy right now. Please try again in a moment.",
+                "barcode": normalized,
+                "product": None,
+            }
+
+        if primary_failed and off_failed and not web_answered:
+            return {
+                "state": "error",
+                "source": None,
+                "message": "Something went wrong. Please try again.",
+                "barcode": normalized,
+                "product": None,
             }
 
         return {

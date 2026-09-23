@@ -19,6 +19,16 @@ def normalize_barcode(raw: str) -> str | None:
     return cleaned
 
 
+def has_valid_check_digit(barcode: str) -> bool:
+    """GS1 mod-10 check digit (EAN-8, UPC-A, EAN-13, GTIN-14). Used only to gate
+    the paid web-search tier — the DB tiers still match any well-formed number,
+    since real catalogues contain non-compliant codes."""
+    digits = [int(c) for c in barcode]
+    body, check = digits[:-1], digits[-1]
+    total = sum(d * (3 if i % 2 == 0 else 1) for i, d in enumerate(reversed(body)))
+    return (10 - total % 10) % 10 == check
+
+
 def barcode_variants(barcode: str) -> list[str]:
     """All zero-padded forms of `barcode` worth matching against, since the
     same product may be stored as UPC-A, EAN-13, or GTIN-14 depending on
