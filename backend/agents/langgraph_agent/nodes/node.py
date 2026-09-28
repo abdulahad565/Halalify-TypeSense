@@ -143,10 +143,15 @@ def search_node(state: SearchAgentState) -> dict:
     # A malformed barcode can only return nothing, so reply instead of searching.
     for call in tool_calls or []:
         if call["name"] in (KeywordFilterSearch.name, SemanticFilterSearch.name):
-            message = invalid_barcode_message((call.get("args") or {}).get("filter_args"))
+            message = invalid_barcode_message(
+                (call.get("args") or {}).get("filter_args")
+            )
             if message:
                 log.info("barcode.invalid", args=call.get("args"))
-                return {"messages": [AIMessage(content=message)], "classification": "direct"}
+                return {
+                    "messages": [AIMessage(content=message)],
+                    "classification": "direct",
+                }
 
     update = {"messages": [result]}
     # Only the first (unforced) call decides the route: a tool call means search,

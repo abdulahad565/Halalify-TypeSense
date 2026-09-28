@@ -20,7 +20,6 @@ from barcode_lookup import (
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel as PydanticBaseModel
 from agents.langgraph_agent.main_langgraph_agent import stream_agent, compact_session
-from llms.vision_llm import invoke_llm_with_image, close_vlms
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Header
 from config.supabase_client import get_supabase
 from config.valkey_client import get_valkey, close_valkey
@@ -40,7 +39,6 @@ from rate_limit import (
 )
 from langchain.messages import HumanMessage, AIMessage, SystemMessage
 from langchain_core.messages.utils import count_tokens_approximately
-from barcode_lookup import normalize_barcode, query_primary_db, project_product
 load_dotenv(override=True)
 
 # Base token count that triggers a compaction prompt (~30% of the model context).
@@ -505,8 +503,11 @@ class BarcodeLookupRequest(PydanticBaseModel):
     barcode: str
 
 
+
 @app.post("/api/v1/barcode/lookup")
-async def barcode_lookup_endpoint(req: BarcodeLookupRequest, authorization: str = Header(default="")):
+async def barcode_lookup_endpoint(
+    req: BarcodeLookupRequest, authorization: str = Header(default="")
+):
     async with logged_process("http.barcode_lookup"):
         token = authorization.removeprefix("Bearer ").strip()
         try:
@@ -518,13 +519,21 @@ async def barcode_lookup_endpoint(req: BarcodeLookupRequest, authorization: str 
         except HTTPException:
             raise
         except Exception as e:
-            log.warning("http.barcode_lookup.auth_failed", error=str(e), error_type=type(e).__name__)
+            log.warning(
+                "http.barcode_lookup.auth_failed",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             raise HTTPException(status_code=401, detail="Unauthorized")
         bind_contextvars(user_id=user_id)
 
         if not await allow_user(user_id, "barcode-lookup"):
-            log.warning("ratelimit.rejected", kind="user_req_rate", action="http.barcode_lookup")
-            raise HTTPException(status_code=429, detail="Too many requests, please slow down")
+            log.warning(
+                "ratelimit.rejected", kind="user_req_rate", action="http.barcode_lookup"
+            )
+            raise HTTPException(
+                status_code=429, detail="Too many requests, please slow down"
+            )
 
         normalized = normalize_barcode(req.barcode)
         if normalized is None:
@@ -540,7 +549,11 @@ async def barcode_lookup_endpoint(req: BarcodeLookupRequest, authorization: str 
         try:
             doc = await asyncio.to_thread(query_primary_db, normalized)
         except Exception as e:
-            log.error("http.barcode_lookup.db_failed", error=str(e), error_type=type(e).__name__)
+            log.error(
+                "http.barcode_lookup.db_failed",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             doc = None
             primary_failed = True
 
@@ -557,7 +570,11 @@ async def barcode_lookup_endpoint(req: BarcodeLookupRequest, authorization: str 
         try:
             off_doc = await asyncio.to_thread(query_off_db, normalized)
         except Exception as e:
-            log.error("http.barcode_lookup.off_failed", error=str(e), error_type=type(e).__name__)
+            log.error(
+                "http.barcode_lookup.off_failed",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             off_doc = None
             off_failed = True
 
@@ -577,12 +594,22 @@ async def barcode_lookup_endpoint(req: BarcodeLookupRequest, authorization: str 
         if has_valid_check_digit(normalized):  # never pay for Exa on a broken barcode
             web_attempted = True
             try:
-                web_product = await asyncio.to_thread(search_web_for_barcode, normalized)
+                web_product = await asyncio.to_thread(
+                    search_web_for_barcode, normalized
+                )
             except ExaBusyError as e:
-                log.warning("http.barcode_lookup.web_busy", error=str(e), error_type=type(e).__name__)
+                log.warning(
+                    "http.barcode_lookup.web_busy",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
                 web_busy = True
             except Exception as e:
-                log.error("http.barcode_lookup.web_failed", error=str(e), error_type=type(e).__name__)
+                log.error(
+                    "http.barcode_lookup.web_failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
                 web_failed = True
         else:
             log.info("http.barcode_lookup.web_skipped", reason="bad_check_digit")
