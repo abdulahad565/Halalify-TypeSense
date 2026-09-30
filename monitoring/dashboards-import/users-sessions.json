@@ -1,4 +1,13 @@
 {
+  "__inputs": [
+    {
+      "name": "DS_LOKI",
+      "label": "Loki",
+      "type": "datasource",
+      "pluginId": "loki",
+      "pluginName": "Loki"
+    }
+  ],
   "__requires": [
     {
       "type": "grafana",
@@ -96,7 +105,7 @@
       "description": "Distinct users seen in the last 5 minutes.",
       "datasource": {
         "type": "loki",
-        "uid": "loki-halalone"
+        "uid": "${DS_LOKI}"
       },
       "gridPos": {
         "h": 5,
@@ -136,10 +145,10 @@
           "refId": "A",
           "datasource": {
             "type": "loki",
-            "uid": "loki-halalone"
+            "uid": "${DS_LOKI}"
           },
           "queryType": "instant",
-          "expr": "count(sum by (user_id) (count_over_time({job=\"vps_backend\"} | json event=\"event\", user_id=\"user_id\" | event=`process.end` | user_id != `` [5m])))"
+          "expr": "count(sum by (user_id) (count_over_time({job=\"halalify-backend\"} | json event=\"event\", user_id=\"user_id\" | event=`process.end` | user_id != `` [5m])))"
         }
       ]
     },
@@ -150,7 +159,7 @@
       "description": "Distinct users over the whole selected range. Set the time picker to 24h to read this as daily active users.",
       "datasource": {
         "type": "loki",
-        "uid": "loki-halalone"
+        "uid": "${DS_LOKI}"
       },
       "gridPos": {
         "h": 5,
@@ -190,10 +199,10 @@
           "refId": "A",
           "datasource": {
             "type": "loki",
-            "uid": "loki-halalone"
+            "uid": "${DS_LOKI}"
           },
           "queryType": "instant",
-          "expr": "count(sum by (user_id) (count_over_time({job=\"vps_backend\"} | json event=\"event\", user_id=\"user_id\" | event=`process.end` | user_id != `` [$__range])))"
+          "expr": "count(sum by (user_id) (count_over_time({job=\"halalify-backend\"} | json event=\"event\", user_id=\"user_id\" | event=`process.end` | user_id != `` [$__range])))"
         }
       ]
     },
@@ -204,7 +213,7 @@
       "description": "Conversations started in this window. The graph shows when people started them.",
       "datasource": {
         "type": "loki",
-        "uid": "loki-halalone"
+        "uid": "${DS_LOKI}"
       },
       "gridPos": {
         "h": 5,
@@ -244,11 +253,11 @@
           "refId": "A",
           "datasource": {
             "type": "loki",
-            "uid": "loki-halalone"
+            "uid": "${DS_LOKI}"
           },
           "queryType": "range",
           "legendFormat": "new conversations",
-          "expr": "sum(count_over_time({job=\"vps_backend\"} | json event=\"event\" | event=`session_created` [$__interval]))"
+          "expr": "sum(count_over_time({job=\"halalify-backend\"} | json event=\"event\" | event=`session_created` [$__interval]))"
         }
       ]
     },
@@ -259,7 +268,7 @@
       "description": "Average chat prompts sent per conversation. Higher means longer, more engaged exchanges with the agent.",
       "datasource": {
         "type": "loki",
-        "uid": "loki-halalone"
+        "uid": "${DS_LOKI}"
       },
       "gridPos": {
         "h": 5,
@@ -299,10 +308,10 @@
           "refId": "A",
           "datasource": {
             "type": "loki",
-            "uid": "loki-halalone"
+            "uid": "${DS_LOKI}"
           },
           "queryType": "instant",
-          "expr": "sum(count_over_time({job=\"vps_backend\"} | json event=\"event\", action=\"action\" | event=`process.end` | action=`ws.prompt` [$__range])) / count(sum by (session_id) (count_over_time({job=\"vps_backend\"} | json event=\"event\", action=\"action\", session_id=\"session_id\" | event=`process.end` | action=`ws.prompt` | session_id != `` [$__range])))"
+          "expr": "sum(count_over_time({job=\"halalify-backend\"} | json event=\"event\", action=\"action\" | event=`process.end` | action=`ws.prompt` [$__range])) / count(sum by (session_id) (count_over_time({job=\"halalify-backend\"} | json event=\"event\", action=\"action\", session_id=\"session_id\" | event=`process.end` | action=`ws.prompt` | session_id != `` [$__range])))"
         }
       ]
     },
@@ -313,7 +322,7 @@
       "description": "Every user action stacked by type - total height is overall activity. ws.prompt is sending a chat message, ws.image uploading a photo, ws.chat_history opening an old conversation. The legend lists each with its total.",
       "datasource": {
         "type": "loki",
-        "uid": "loki-halalone"
+        "uid": "${DS_LOKI}"
       },
       "gridPos": {
         "h": 9,
@@ -365,11 +374,11 @@
           "refId": "A",
           "datasource": {
             "type": "loki",
-            "uid": "loki-halalone"
+            "uid": "${DS_LOKI}"
           },
           "queryType": "range",
           "legendFormat": "{{action}}",
-          "expr": "sum by (action) (count_over_time({job=\"vps_backend\"} | json event=\"event\", action=\"action\" | event=`process.end` [$__interval]))"
+          "expr": "sum by (action) (count_over_time({job=\"halalify-backend\"} | json event=\"event\", action=\"action\" | event=`process.end` [$__interval]))"
         }
       ]
     },
@@ -380,7 +389,7 @@
       "description": "Share of all activity by feature. If chatting dominates, people are using the agent; if history reads dominate, they are mostly re-reading old conversations.",
       "datasource": {
         "type": "loki",
-        "uid": "loki-halalone"
+        "uid": "${DS_LOKI}"
       },
       "gridPos": {
         "h": 9,
@@ -429,11 +438,11 @@
           "refId": "A",
           "datasource": {
             "type": "loki",
-            "uid": "loki-halalone"
+            "uid": "${DS_LOKI}"
           },
           "queryType": "instant",
           "legendFormat": "{{action}}",
-          "expr": "sum by (action) (count_over_time({job=\"vps_backend\"} | json event=\"event\", action=\"action\" | event=`process.end` [$__range]))"
+          "expr": "sum by (action) (count_over_time({job=\"halalify-backend\"} | json event=\"event\", action=\"action\" | event=`process.end` [$__range]))"
         }
       ]
     },
@@ -444,7 +453,7 @@
       "description": "The 10 users who made the most requests, with a bar showing how they compare. One user far ahead of everyone else is worth investigating.",
       "datasource": {
         "type": "loki",
-        "uid": "loki-halalone"
+        "uid": "${DS_LOKI}"
       },
       "gridPos": {
         "h": 9,
@@ -561,11 +570,11 @@
           "refId": "A",
           "datasource": {
             "type": "loki",
-            "uid": "loki-halalone"
+            "uid": "${DS_LOKI}"
           },
           "queryType": "instant",
           "legendFormat": "{{user_id}}",
-          "expr": "topk(10, sum by (user_id) (count_over_time({job=\"vps_backend\"} | json event=\"event\", user_id=\"user_id\" | event=`process.end` | user_id != `` [$__range])))"
+          "expr": "topk(10, sum by (user_id) (count_over_time({job=\"halalify-backend\"} | json event=\"event\", user_id=\"user_id\" | event=`process.end` | user_id != `` [$__range])))"
         }
       ]
     },
@@ -576,7 +585,7 @@
       "description": "New conversations started, conversations deleted, and long conversations being auto-summarised ('folded'). Together these show whether people keep coming back or start fresh each time.",
       "datasource": {
         "type": "loki",
-        "uid": "loki-halalone"
+        "uid": "${DS_LOKI}"
       },
       "gridPos": {
         "h": 9,
@@ -669,31 +678,31 @@
           "refId": "A",
           "datasource": {
             "type": "loki",
-            "uid": "loki-halalone"
+            "uid": "${DS_LOKI}"
           },
           "queryType": "range",
           "legendFormat": "started",
-          "expr": "sum(count_over_time({job=\"vps_backend\"} | json event=\"event\" | event=`session_created` [$__interval]))"
+          "expr": "sum(count_over_time({job=\"halalify-backend\"} | json event=\"event\" | event=`session_created` [$__interval]))"
         },
         {
           "refId": "B",
           "datasource": {
             "type": "loki",
-            "uid": "loki-halalone"
+            "uid": "${DS_LOKI}"
           },
           "queryType": "range",
           "legendFormat": "deleted",
-          "expr": "sum(count_over_time({job=\"vps_backend\"} | json event=\"event\", action=\"action\" | event=`process.end` | action=`ws.delete_session` [$__interval]))"
+          "expr": "sum(count_over_time({job=\"halalify-backend\"} | json event=\"event\", action=\"action\" | event=`process.end` | action=`ws.delete_session` [$__interval]))"
         },
         {
           "refId": "C",
           "datasource": {
             "type": "loki",
-            "uid": "loki-halalone"
+            "uid": "${DS_LOKI}"
           },
           "queryType": "range",
           "legendFormat": "summarised",
-          "expr": "sum(count_over_time({job=\"vps_backend\"} | json event=\"event\" | event=`compaction.folded` [$__interval]))"
+          "expr": "sum(count_over_time({job=\"halalify-backend\"} | json event=\"event\" | event=`compaction.folded` [$__interval]))"
         }
       ]
     },
@@ -704,7 +713,7 @@
       "description": "Someone tried to connect with an invalid or expired token. A handful is normal - sessions expire. A sustained spike is worth investigating as a possible attack.",
       "datasource": {
         "type": "loki",
-        "uid": "loki-halalone"
+        "uid": "${DS_LOKI}"
       },
       "gridPos": {
         "h": 8,
@@ -752,11 +761,11 @@
           "refId": "A",
           "datasource": {
             "type": "loki",
-            "uid": "loki-halalone"
+            "uid": "${DS_LOKI}"
           },
           "queryType": "range",
           "legendFormat": "{{event}}",
-          "expr": "sum by (event) (count_over_time({job=\"vps_backend\"} | json event=\"event\" | event=~`ws\\.auth\\.failed|http\\.extract_image\\.auth_failed` [$__interval]))"
+          "expr": "sum by (event) (count_over_time({job=\"halalify-backend\"} | json event=\"event\" | event=~`ws\\.auth\\.failed|http\\.extract_image\\.auth_failed` [$__interval]))"
         }
       ]
     }
