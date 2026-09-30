@@ -386,7 +386,8 @@
               "mode": "normal",
               "group": "A"
             }
-          }
+          },
+          "displayName": "${__field.labels.kind}"
         },
         "overrides": [
           {
@@ -489,8 +490,8 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
-          "values": false
+          "fields": "/^Value/",
+          "values": true
         },
         "legend": {
           "displayMode": "table",
@@ -821,7 +822,8 @@
               "mode": "normal",
               "group": "A"
             }
-          }
+          },
+          "displayName": "${__field.labels.event}"
         },
         "overrides": []
       },
