@@ -390,7 +390,8 @@
               "group": "A"
             },
             "gradientMode": "opacity"
-          }
+          },
+          "displayName": "${__field.labels.action}"
         },
         "overrides": []
       },
@@ -448,8 +449,8 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
-          "values": false
+          "fields": "/^Value/",
+          "values": true
         },
         "legend": {
           "displayMode": "table",
@@ -640,7 +641,8 @@
             "pointSize": 6,
             "spanNulls": true,
             "lineInterpolation": "smooth"
-          }
+          },
+          "displayName": "${__field.labels.action}"
         },
         "overrides": []
       },
@@ -705,7 +707,8 @@
               "mode": "normal",
               "group": "A"
             }
-          }
+          },
+          "displayName": "${__field.labels.error_type}"
         },
         "overrides": []
       },
@@ -762,8 +765,8 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
-          "values": false
+          "fields": "/^Value/",
+          "values": true
         },
         "legend": {
           "displayMode": "table",
